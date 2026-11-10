@@ -530,7 +530,7 @@ func (fakeLyrics) Get(ctx context.Context, id int) (lyrics.Track, error) {
 	return lyrics.Track{}, lyrics.ErrNotFound
 }
 
-func (fakeLyrics) Search(ctx context.Context, q string) ([]lyrics.Track, error) {
+func (fakeLyrics) Find(ctx context.Context, q string) ([]lyrics.Track, error) {
 	return []lyrics.Track{
 		{ID: 42, Track: "Bohemian Rhapsody (Live)", Artist: "Queen", Lyrics: "\nMama\njust killed a man\nput a gun"},
 		{ID: 43, Track: "Bohemian Rhapsody", Artist: "Queen", Instrumental: true},
@@ -556,7 +556,7 @@ func TestLyrics(t *testing.T) {
 		json.Unmarshal(data, &a)
 		return a
 	}
-	if a := get(); a.Track == nil || a.Track.ID != 7 || a.Chosen || a.Query != "queen bohemian rhapsody" {
+	if a := get(); a.Track == nil || a.Track.ID != 7 || a.Chosen || a.Query != "Queen - Bohemian Rhapsody" {
 		t.Errorf("automatic match = %+v", a)
 	}
 	if resp, _ := h.do("POST", "/api/queue/"+qid+"/lyrics", `{"id":42}`); resp.StatusCode != 204 {

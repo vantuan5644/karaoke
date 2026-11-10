@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -34,12 +35,19 @@ func TestParts(t *testing.T) {
 		"The Beatles - Yesterday - Karaoke Version from Zoom Karaoke":                              {"the beatles", "yesterday"},
 		"Ed Sheeran   Shape Of You Karaoke Version":                                                {"ed sheeran shape of you"},
 		"Karaoke | Em Của Ngày Hôm Qua (New Version) (Beat Chuẩn Có Bè)":                           {"em cua ngay hom qua"},
-		"Nắng Ấm Xa Dần Karaoke ( Có Bè ) Sơn Tùng M-TP":                                           {"nang am xa dan son tung m tp"},
+		"Nắng Ấm Xa Dần Karaoke ( Có Bè ) Sơn Tùng M-TP":                                           {"nang am xa dan", "son tung m tp"},
 		"ĐỪNG LÀM TRÁI TIM ANH ĐAU KARAOKE (BEAT CHUẨN) TONE NAM":                                  {"dung lam trai tim anh dau"},
-		"Karaoke   Full HD Nắng ấm xa dần   Sơn Tùng MTP Beat chuẩn Newtitan www tubeprojects net": {"nang am xa dan son tung mtp newtitan"},
+		"Karaoke   Full HD Nắng ấm xa dần   Sơn Tùng MTP Beat chuẩn Newtitan www tubeprojects net": {"nang am xa dan son tung mtp", "newtitan"},
 		"(Karaoke) Tone Nữ - Em Của Ngày Hôm Qua - Sơn Tùng MTP - ecnhqkanu #ecnhqkanu":            {"em cua ngay hom qua", "son tung mtp", "ecnhqkanu"},
-		"Let It Go (Karaoke) from 'Frozen'":                                                        {"let it go from frozen"},
+		"Let It Go (Karaoke) from 'Frozen'":                                                        {"let it go", "from frozen"},
 		"Karaoke Karaoke (Official Video)":                                                         nil,
+		// What a channel tags on after "Karaoke" is not part of the song's name.
+		"Anh Đau Từ Lúc Em Đi Karaoke Tone Nữ ( F#m ) Beat Live Band Dễ Hát | Trọng Hiếu":  {"anh dau tu luc em di", "trong hieu"},
+		"Karaoke Anh Đau Từ Khúc Em Đi - Quốc Thiên | Karaoke Beat Chuẩn | Nhạc Trẻ":       {"anh dau tu khuc em di", "quoc thien"},
+		"Mưa Trên Cuộc Tình Remix Karaoke Hay Nhất | Hoàng Dũng Karaoke":                   {"mua tren cuoc tinh remix", "hoang dung"},
+		"Sóng Gió Karaoke Tone Nữ ( Abm ) Nhạc Sống Rumba Karaoke Lâm Organ  -   Beat Mới": {"song gio", "rumba", "lam organ"},
+		// "Sóng" folds to "song": "karaoke song" is not the English tag.
+		"Karaoke Sóng gió - K-ICM x JACK (Guitar Solo Beat) | Thiện Trung Guitar": {"song gio", "k icm x jack", "thien trung guitar"},
 	} {
 		if got := Parts(title); !reflect.DeepEqual(got, want) {
 			t.Errorf("Parts(%q) = %q, want %q", title, got, want)
@@ -47,14 +55,60 @@ func TestParts(t *testing.T) {
 	}
 }
 
+func TestClean(t *testing.T) {
+	for title, want := range map[string]string{
+		"Karaoke Anh Đau Từ Khúc Em Đi - Quốc Thiên | Karaoke Beat Chuẩn | Nhạc Trẻ":           "Anh Đau Từ Khúc Em Đi - Quốc Thiên",
+		"Take Me Home, Country Roads -John Denver [Acoustic Karaoke | Femaler Key]":            "Take Me Home, Country Roads - John Denver",
+		"ĐỪNG LÀM TRÁI TIM ANH ĐAU KARAOKE (BEAT CHUẨN) TONE NAM":                              "ĐỪNG LÀM TRÁI TIM ANH ĐAU",
+		"KARAOKE Anh Đau Từ Lúc Em Đi - Đàm Vĩnh Hưng | “Ngày đó anh ngỡ chỉ là lời nói” BEAT": "Anh Đau Từ Lúc Em Đi - Đàm Vĩnh Hưng - Ngày đó anh ngỡ chỉ là lời nói",
+		"Queen - Bohemian Rhapsody (Karaoke Version)":                                          "Queen - Bohemian Rhapsody",
+		"Mu\u0303i Ne\u0300 Karaoke":       "Mu\u0303i Ne\u0300", // accents typed as separate marks stay on
+		"Karaoke Karaoke (Official Video)": "",
+	} {
+		if got := Clean(title); got != want {
+			t.Errorf("Clean(%q) = %q, want %q", title, got, want)
+		}
+	}
+}
+
 func TestQueriesTryTheWholeTitleThenItsPartsThenShorter(t *testing.T) {
-	got := queries([]string{"nang am xa dan son tung mtp newtitan"})
+	got, _ := queries([]string{"nang am xa dan son tung mtp newtitan"})
 	want := []string{"nang am xa dan son tung mtp newtitan", "nang am xa dan son tung mtp", "nang am xa dan son tung", "nang am xa dan son", "nang am xa dan"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("queries = %q", got)
 	}
-	if got := queries([]string{"queen", "bohemian rhapsody"}); got[0] != "queen bohemian rhapsody" || got[1] != "queen" || got[2] != "bohemian rhapsody" {
+	if got, _ := queries([]string{"queen", "bohemian rhapsody"}); got[0] != "queen bohemian rhapsody" || got[1] != "queen" || got[2] != "bohemian rhapsody" {
 		t.Errorf("queries = %q", got)
+	}
+}
+
+func TestLooseQueriesLeaveEachWordOutOfAPart(t *testing.T) {
+	plain, loose := queries([]string{"anh dau tu khuc em di", "quoc thien"})
+	if plain[0] != "anh dau tu khuc em di quoc thien" || plain[1] != "anh dau tu khuc em di" || plain[2] != "quoc thien" {
+		t.Errorf("plain queries = %q", plain)
+	}
+	if slices.Contains(plain, "anh dau tu em di") || !slices.Contains(loose, "anh dau tu em di") {
+		t.Errorf("leaving the misspelled word out is not a loose query: %q, %q", plain, loose)
+	}
+	if all := slices.Concat(plain, loose); slices.Contains(all, "quoc") || slices.Contains(all, "anh") {
+		t.Errorf("a one-word query matches too much: %q", all)
+	}
+	plain, loose = queries([]string{"one two three four five six seven", "eight nine ten eleven twelve", "thirteen fourteen fifteen"})
+	if n := len(plain) + len(loose); n > maxQueries {
+		t.Errorf("%d queries, want at most %d", n, maxQueries)
+	}
+}
+
+func TestMatchTriesLooseQueriesOnlyWhenThePlainOnesFindNothing(t *testing.T) {
+	song := record{ID: 5, TrackName: "Anh Đau Từ Lúc Em Đi", ArtistName: "Trần Mạnh Cường", Duration: 374, PlainLyrics: "Ngày đó anh ngỡ chỉ là lời nói"}
+	c, f := newFake(t, map[string][]record{"anh dau tu luc em di": {song}})
+	title := "Anh Đau Từ Lúc Em Đi Karaoke Tone Nữ ( F#m ) Beat Live Band Dễ Hát | Trọng Hiếu"
+	if got, ok, err := c.Match(context.Background(), title, 0); err != nil || !ok || got.ID != 5 {
+		t.Fatalf("Match = %+v, %v, %v", got, ok, err)
+	}
+	plain, _ := queries(Parts(title))
+	if !reflect.DeepEqual(f.queries, plain) {
+		t.Errorf("searched %q, want only %q", f.queries, plain)
 	}
 }
 
@@ -147,6 +201,44 @@ func TestMatchFallsBackToShorterQueriesAndCaches(t *testing.T) {
 	}
 	if _, _, err := c.Match(context.Background(), title, 195); err != nil || len(f.queries) != asked {
 		t.Errorf("a second Match asked LRCLIB again (%d queries)", len(f.queries))
+	}
+}
+
+func TestMatchFindsTheSongPastAMisspelledWord(t *testing.T) {
+	song := record{ID: 5, TrackName: "Anh Đau Từ Lúc Em Đi", ArtistName: "Trần Mạnh Cường", Duration: 374, PlainLyrics: "Ngày đó anh ngỡ chỉ là lời nói"}
+	c, _ := newFake(t, map[string][]record{"anh dau tu em di": {song}})
+	got, ok, err := c.Match(context.Background(), "Karaoke Anh Đau Từ Khúc Em Đi - Quốc Thiên | Karaoke Beat Chuẩn | Nhạc Trẻ", 379)
+	if err != nil || !ok || got.ID != 5 {
+		t.Errorf("Match = %+v, %v, %v", got, ok, err)
+	}
+}
+
+func TestFindLoosensTheWordsOnlyWhenNothingMatchesAsTyped(t *testing.T) {
+	song := record{ID: 5, TrackName: "Anh Đau Từ Lúc Em Đi", ArtistName: "Trần Mạnh Cường", PlainLyrics: "Ngày đó anh ngỡ chỉ là lời nói"}
+	other := record{ID: 6, TrackName: "Anh Đâu Phải Anh Ấy", ArtistName: "Vương Anh Tú", PlainLyrics: "x"}
+	c, f := newFake(t, map[string][]record{
+		"anh dau tu":       {other, song},
+		"anh dau tu em di": {song},
+		"Anh Đau":          {other, song},
+	})
+	got, err := c.Find(context.Background(), "Anh Đau Từ Khúc Em Đi")
+	if err != nil || len(got) == 0 || got[0].ID != 5 {
+		t.Fatalf("Find = %+v, %v", got, err)
+	}
+	for _, tr := range got {
+		if tr.ID == 6 {
+			t.Error("a song the words don't name came back")
+		}
+	}
+	if f.queries[0] != "Anh Đau Từ Khúc Em Đi" {
+		t.Errorf("the words as typed were not tried first: %q", f.queries)
+	}
+	if slices.Contains(f.queries, "anh dau tu khuc em di") {
+		t.Errorf("the typed words were searched twice: %q", f.queries)
+	}
+	asked := len(f.queries)
+	if got, err := c.Find(context.Background(), "Anh Đau"); err != nil || len(got) != 2 || got[0].ID != 6 || len(f.queries) != asked+1 {
+		t.Errorf("a search with results was changed: %+v, %v, %q", got, err, f.queries[asked:])
 	}
 }
 

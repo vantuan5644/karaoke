@@ -3,6 +3,7 @@
 package lyrics
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -140,26 +142,83 @@ func (c *Client) Match(ctx context.Context, title string, duration float64) (t T
 	if len(parts) == 0 {
 		return Track{}, false, nil
 	}
+	plain, loose := queries(parts)
+	found, err := c.look(ctx, title, parts, [][]string{plain, loose}, duration, goodEnough)
+	if err != nil {
+		return Track{}, false, err
+	}
+	if len(found) > 0 && found[0].score >= minScore {
+		t, ok = found[0].Track, true
+	}
+	store(c, c.matches, key, match{t, ok})
+	return t, ok, nil
+}
+
+// Find searches for what someone typed. When LRCLIB has nothing for those words, it loosens
+// them the way Match does, so a misspelled word ("Khúc" for "Lúc") or a channel's tag still
+// finds the song; then only songs the words name come back, best first.
+func (c *Client) Find(ctx context.Context, query string) ([]Track, error) {
+	found, err := c.Search(ctx, query)
+	if err != nil || len(found) > 0 {
+		return found, err
+	}
+	parts := Parts(query)
+	plain, loose := queries(parts)
+	typed := strings.Join(strings.Fields(punctuation.ReplaceAllString(Fold(query), " ")), " ")
+	// LRCLIB ignores accents and capitals, so the folded words are the search just made.
+	plain = slices.DeleteFunc(plain, func(q string) bool { return q == typed })
+	scored, err := c.look(ctx, query, parts, [][]string{plain, loose}, 0, minScore)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Track, 0, len(scored))
+	for _, s := range scored {
+		out = append(out, s.Track)
+	}
+	return out, nil
+}
+
+type scored struct {
+	Track
+	score float64
+}
+
+// look searches each query in turn and keeps every track that names the title's words. It
+// stops once the best of them scores enough, or at the end of a round of queries once one
+// would do. Best first; a tie goes to the one found first.
+func (c *Client) look(ctx context.Context, title string, parts []string, rounds [][]string, duration, enough float64) ([]scored, error) {
 	words := tokens(strings.Join(parts, " "))
 	accented := hasAccents(title)
-	best, bestScore := Track{}, 0.0
-	for _, q := range queries(parts) {
-		found, err := c.Search(ctx, q)
-		if err != nil {
-			return Track{}, false, err
-		}
-		for _, candidate := range found {
-			if s := score(candidate, words, duration, accented); s > bestScore {
-				best, bestScore = candidate, s
+	var out []scored
+	seen := map[int]bool{}
+	best := 0.0
+search:
+	for _, qs := range rounds {
+		for _, q := range qs {
+			found, err := c.Search(ctx, q)
+			if err != nil {
+				return nil, err
+			}
+			for _, t := range found {
+				if seen[t.ID] {
+					continue
+				}
+				seen[t.ID] = true
+				if s := score(t, words, duration, accented); s > 0 {
+					out = append(out, scored{t, s})
+					best = max(best, s)
+				}
+			}
+			if best >= enough {
+				break search
 			}
 		}
-		if bestScore >= goodEnough {
+		if best >= minScore {
 			break
 		}
 	}
-	ok = bestScore >= minScore
-	store(c, c.matches, key, match{best, ok})
-	return best, ok, nil
+	slices.SortStableFunc(out, func(a, b scored) int { return cmp.Compare(b.score, a.score) })
+	return out, nil
 }
 
 // get fetches one LRCLIB answer, waiting its turn first, and waits out a 429 twice before

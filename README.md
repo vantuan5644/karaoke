@@ -120,8 +120,11 @@ They come from LRCLIB, a free, open lyrics database. The server takes the karaok
 the video's title ("Bohemian Rhapsody - Queen | Karaoke Version | KaraFun" becomes "bohemian
 rhapsody queen"), searches, and picks the record whose name the title contains, preferring the
 song over remixes, a length close to the video's, and accented lyrics for an accented title.
-On 84 real karaoke titles (English and Vietnamese) it picked the right song every time. When it
-is wrong, **Wrong lyrics?** on the phone searches LRCLIB by hand; *No lyrics* turns them off
+When nothing fits, it tries the title with one word left out, so an uploader's misspelling
+("Anh Đau Từ Khúc Em Đi" for "Anh Đau Từ Lúc Em Đi") still finds the song. On 96 real karaoke
+titles (English and Vietnamese) it picked the right song every time. When it is wrong,
+**Wrong lyrics?** on the phone searches LRCLIB by hand, starting from the cleaned title with
+its accents; a search that finds nothing is loosened the same way. *No lyrics* turns them off
 for that song. With `-lyrics=false` the server never contacts LRCLIB.
 
 ## Your own karaoke files

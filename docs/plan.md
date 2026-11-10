@@ -122,6 +122,17 @@ Rhapsody (50 lines) fits whole in two columns at half the screen; Shape of You (
 Vietnamese songs, whose long lines wrap, fall back to one column that scrolls, with a fade at
 the bottom while there is more.
 
+Later on 2026-11-10: "Karaoke Anh Đau Từ Khúc Em Đi" found no lyrics, and the phone's search box
+offered "anh dau tu khuc em di quoc thien nhac tre". Of 112 Vietnamese titles from our search,
+95 matched; the misses were the uploader's misspelling (Khúc for Lúc: LRCLIB needs every word,
+so nothing came back), channel tags after "Karaoke" left joined to the song's name ("... Karaoke
+Tone Nữ Beat Live Band Dễ Hát"), and "Karaoke Sóng Gió" losing "Sóng" to the tag "karaoke
+song". Now the title splits at each tag as at a separator, a round of looser queries (each part
+with one word left out, or shortened) runs only when the plain ones find nothing, and the search
+box starts from the cleaned title as written ("Anh Đau Từ Khúc Em Đi - Quốc Thiên"); a search
+by hand that finds nothing is loosened the same way. The 12 misses joined the live test: 96 of
+96, at 147 LRCLIB requests against 151 before.
+
 ## Other sources (after that)
 
 - *Library* (done): `-library DIR`. `internal/library` walks the folders (skipping hidden and

@@ -13,7 +13,7 @@ import (
 
 // LyricsSource is the part of lyrics.Client the server uses.
 type LyricsSource interface {
-	Search(ctx context.Context, query string) ([]lyrics.Track, error)
+	Find(ctx context.Context, query string) ([]lyrics.Track, error)
 	Get(ctx context.Context, id int) (lyrics.Track, error)
 	Match(ctx context.Context, title string, duration float64) (lyrics.Track, bool, error)
 }
@@ -63,7 +63,7 @@ func (s *Server) lyricsFor(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "no such entry")
 		return
 	}
-	ans := lyricsAnswer{QID: qid, Query: strings.Join(lyrics.Parts(lyricsTitle(entry.Song)), " ")}
+	ans := lyricsAnswer{QID: qid, Query: lyrics.Clean(lyricsTitle(entry.Song))}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	switch id := entry.Song.LyricsID; {
@@ -105,7 +105,7 @@ func (s *Server) lyricsSearch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too many searches; try again in a moment")
 		return
 	}
-	found, err := s.cfg.Lyrics.Search(r.Context(), query)
+	found, err := s.cfg.Lyrics.Find(r.Context(), query)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return

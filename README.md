@@ -185,10 +185,13 @@ song up or down a semitone, as far as six either way. The TV shifts the sound it
 [Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) in an AudioWorklet, so the
 tempo stays the same. Library files change key at once. A YouTube song needs its downloaded copy, because YouTube's embedded player
 keeps its sound to itself: a song playing embedded keeps going in the original key while the
-copy downloads (a few seconds), then carries on from the same spot in the new key. In the new
-key the sound trails the picture by about 0.12 s, the shifter's processing time; in the
-original key it bypasses the shifter. The key belongs to that turn in the queue, so the next
-singer starts in the original key. For a YouTube song, downloads must be on (`yt-dlp` found).
+copy downloads (a few seconds), then carries on from the same spot in the new key. The shifter
+needs 0.12 s, and sound through Web Audio leaves later than the browser allows for when it
+syncs the picture, so the TV holds the picture back to match: each frame is drawn on a canvas
+over the video that much later (about 0.15 s), and MP3+G graphics wait the same. Measured with a
+test video that flashes and beeps, picture and sound land within about 15 ms of each other. The
+key belongs to that turn in the queue, so the next singer starts in the original key. For a
+YouTube song, downloads must be on (`yt-dlp` found).
 
 ## How playback is chosen
 

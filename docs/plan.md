@@ -97,6 +97,18 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    reported latency. On a real song playing embedded, +2 from the phone switched the TV to the
    download from the same position; +1 then applied live without a restart, and 0 bypassed
    the shifter.
+
+   Later on 2026-11-10 the user said "music lags" after a key change. The music came out 0.14
+   to 0.2 s behind the picture: the shifter's 120 ms, plus Web Audio's own output delay,
+   which Chromium's media player does not count when it syncs the picture to a sound that
+   Web Audio has taken. Now `web/static/tv-delay.js` holds the picture back by the shifter's
+   latency plus the context's `baseLatency` and `outputLatency` (about 155 ms here), drawing
+   each frame (`requestVideoFrameCallback` and `createImageBitmap`) on a canvas over the video;
+   MP3+G graphics wait the same. A test video that flashes white and beeps every 2 s, timed in
+   the page (the screen pixel, against the beep's output time from `getOutputTimestamp`,
+   taken at half the beep's level because the shifter smears its onset): with the picture
+   held, it met the sound at +2, -7 and +23 ms with the key at +2, and +1, -5 and +13 ms at
+   key 0 through Web Audio (35 ms held).
 3. **Vocal removal** for downloaded songs, on the server: a RoFormer model (BS-RoFormer or
    Mel-Band RoFormer lead for vocals) through python-audio-separator (MIT), on a GPU when
    there is one. Upstream Demucs was archived.

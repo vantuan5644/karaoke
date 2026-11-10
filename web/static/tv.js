@@ -7,6 +7,8 @@ import { LyricsPanel } from './tv-lyrics.js';
 import { KeyShift, keyLabel } from './keyshift.js';
 import { CDGView } from './tv-cdg.js';
 import { Finder } from './tv-search.js';
+import { PictureDelay } from './tv-delay.js';
+import { audioContext } from './audio.js';
 import { KNOBS, PRESETS, TUNE_DELAY_MS, latencyVerdict, normalize } from './mic-core.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -44,6 +46,7 @@ function setMode(mode) {
   tv.mode = mode;
   document.body.classList.toggle('mode-embed', mode === 'embed');
   document.body.classList.toggle('mode-file', mode === 'file');
+  if (mode !== 'file' && pictureDelay.active) syncPicture();
 }
 
 function later(name, ms, fn) {
@@ -310,6 +313,7 @@ const cdgView = new CDGView($('#cdg'), video, $('#stage'));
 // or nothing over a video. null clears it.
 function showFormat(cur) {
   const format = cur?.song.source === 'library' ? cur.song.format : null;
+  tv.format = format;
   document.body.classList.toggle('format-cdg', format === 'cdg');
   document.body.classList.toggle('format-audio', format === 'audio');
   const card = $('#audio-card');
@@ -326,12 +330,34 @@ const keyShift = new KeyShift(video);
 
 function shiftKey(cur) {
   const want = cur.key || 0;
-  if (keyShift.semitones === want && (want === 0 || keyShift.stretch)) return;
+  if (keyShift.semitones === want && (want === 0 || keyShift.stretch)) {
+    syncPicture();
+    return;
+  }
   keyShift.set(want)
-    .then(() => keyShift.latency())
-    .then((s) => { cdgView.delay = s; }) // the graphics wait for the shifted sound
+    .then(syncPicture)
     .catch((err) => osd(`Key change failed: ${err.message}`));
 }
+
+// The picture waits for the sound. Once Web Audio has a file's sound (from its first key
+// change on), the sound is late by the key shifter's delay plus Web Audio's own output
+// delay, which the browser leaves out when it syncs the picture.
+const pictureDelay = new PictureDelay(video, $('#delayed'));
+
+async function soundLag() {
+  if (tv.mode !== 'file' || !keyShift.source) return 0;
+  const ctx = audioContext();
+  return (await keyShift.latency()) + (ctx.baseLatency || 0) + (ctx.outputLatency || 0);
+}
+
+async function syncPicture() {
+  const lag = await soundLag();
+  cdgView.delay = lag; // MP3+G graphics are drawn from the sound's clock, minus this
+  const video = !tv.format || tv.format === 'video'; // a download, or a video file
+  pictureDelay.set(video ? lag : 0);
+}
+// The output delay settles a moment after the sound starts, and can change with the device.
+setInterval(() => { if (keyShift.source) syncPicture(); }, 3000);
 
 // keyChanged tells the room when the singers move the key, and why it may take a moment.
 function keyChanged(cur) {
@@ -730,6 +756,7 @@ window.karaokeTV = tv;
 window.karaokeMic = mic;
 window.karaokeLyrics = lyricsPanel;
 window.karaokeKey = keyShift;
+window.karaokePicture = pictureDelay;
 window.karaokeCDG = cdgView;
 window.karaokeFinder = finder;
 window.fmtTime = fmtTime;

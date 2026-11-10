@@ -71,3 +71,47 @@ body:not(.started) .splash .logo { display: none; }
   background: rgb(0 0 0 / .7); opacity: 0; transition: opacity .3s; pointer-events: none; font-variant-numeric: tabular-nums;
 }
 .osd.show { opacity: 1; }
+
+/* Mic */
+.mic-button {
+  position: absolute; left: 2vw; bottom: 3vh; width: 2.6em; height: 2.6em; border-radius: 50%;
+  border: 1px solid var(--line); background: rgb(0 0 0 / .55); color: var(--muted);
+  display: grid; place-items: center; opacity: .5; transition: opacity .3s;
+}
+.mic-button:hover, .mic-button.on { opacity: 1; }
+.mic-button.on { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; }
+body.hide-cursor .mic-button:not(.on) { opacity: 0; }
+.mic-panel {
+  position: absolute; left: 2vw; bottom: calc(3vh + 3.4em); width: min(26em, 90vw);
+  max-height: 80vh; overflow: auto; font-size: .7em;
+  background: rgb(18 13 29 / .94); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1em 1.2em; backdrop-filter: blur(8px);
+}
+.mic-panel header { display: flex; align-items: center; justify-content: space-between; }
+.mic-panel h2 { margin: 0; font-size: 1.3em; }
+.mic-panel .switch { display: flex; align-items: center; gap: .6em; cursor: pointer; }
+.mic-panel .switch input { position: absolute; opacity: 0; }
+.mic-panel .switch span { width: 2.4em; height: 1.4em; border-radius: 1em; background: var(--line); position: relative; }
+.mic-panel .switch span::after {
+  content: ""; position: absolute; top: .2em; left: .2em; width: 1em; height: 1em; border-radius: 50%;
+  background: #fff; transition: transform .2s;
+}
+.mic-panel .switch input:checked + span { background: var(--accent); }
+.mic-panel .switch input:checked + span::after { transform: translateX(1em); }
+.mic-panel .field { display: block; margin-top: .9em; color: var(--muted); }
+.mic-panel output { float: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.mic-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: .3em; }
+.mic-panel select {
+  width: 100%; margin-top: .3em; padding: .4em; border-radius: .5em;
+  background: var(--bg); color: var(--text); border: 1px solid var(--line);
+}
+.meter-row { margin-top: .8em; }
+.level { height: .5em; background: var(--line); border-radius: 1em; overflow: hidden; }
+.level i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ok), var(--warn) 75%, var(--err)); }
+.presets { display: flex; gap: .5em; margin-top: 1em; }
+.presets button, .latency button {
+  flex: 1; padding: .5em; border-radius: .6em; border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+}
+.latency { margin-top: 1em; }
+.latency .hint, .mic-panel .hint { color: var(--muted); font-size: .9em; }
+.mic-error { color: var(--err); }

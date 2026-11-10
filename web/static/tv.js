@@ -1,6 +1,8 @@
 // The TV: plays the song at the head of the queue, embedded from YouTube or from the
 // server's own copy, shows "up next" between songs, and tells the server when one ends.
-import { api, connect, fmtTime, save, store } from './live.js';
+import { api, connect, fmtTime, icon, save, store } from './live.js';
+import { Mic } from './mic.js';
+import { PRESETS, latencyVerdict, normalize } from './mic-core.js';
 
 const $ = (sel) => document.querySelector(sel);
 const video = $('#video');
@@ -301,6 +303,10 @@ function onCommand({ action, value }) {
     reportSoon();
     return;
   }
+  if (action.startsWith('mic-')) {
+    micCommand(action, value);
+    return;
+  }
   const player = active();
   if (!player) return;
   if (action === 'seek') {
@@ -327,7 +333,7 @@ function status() {
       state = 'buffering';
     }
   }
-  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started };
+  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started, mic: mic.status() };
 }
 
 function report() {
@@ -347,12 +353,108 @@ function nextBar(s) {
   $('#nextbar').classList.toggle('show', Boolean(show));
 }
 
+// --- The mic ------------------------------------------------------------------------
+const mic = new Mic({
+  onChange: () => micChanged(),
+  onHowl: () => osd('Feedback! Mic turned down'),
+});
+mic.settings = normalize(store('mic', {}));
+
+function micChanged() {
+  save('mic', mic.settings);
+  const s = mic.settings;
+  $('#mic-on').checked = s.on;
+  for (const k of ['volume', 'echo', 'reverb']) {
+    $(`#mic-${k}`).value = s[k];
+    $(`#mic-${k}-out`).textContent = k === 'volume' ? `${s[k]}%` : s[k];
+  }
+  $('#mic-button').classList.toggle('on', s.on);
+  $('#mic-error').hidden = !mic.error;
+  $('#mic-error').textContent = mic.error;
+  if (mic.latencyMs !== null) $('#mic-latency').textContent = `Round trip ${latencyVerdict(mic.latencyMs)}`;
+  reportSoon();
+}
+
+function micCommand(action, value) {
+  const s = mic.settings;
+  const changes = {
+    'mic-toggle': { on: !s.on },
+    'mic-volume': { volume: s.volume + value, on: true },
+    'mic-echo': { echo: s.echo + value },
+    'mic-reverb': { reverb: s.reverb + value },
+    'mic-preset': PRESETS[['dry', 'ktv', 'hall'][value]] || {},
+  }[action];
+  if (!changes) return;
+  mic.set(changes).then(() => {
+    const now = mic.settings;
+    osd(action === 'mic-toggle' ? (now.on ? 'Mic on' : 'Mic off') : `Mic ${now.volume}% · echo ${now.echo} · reverb ${now.reverb}`);
+  });
+}
+
+async function fillDevices() {
+  const select = $('#mic-device');
+  try {
+    const devices = await mic.devices();
+    select.replaceChildren(new Option('Default mic', ''), ...devices
+      .filter((d) => d.deviceId && d.deviceId !== 'default')
+      .map((d, i) => new Option(d.label || `Mic ${i + 1}`, d.deviceId)));
+    select.value = mic.settings.deviceId;
+  } catch {
+    // No device list until the browser has been allowed to use a mic.
+  }
+}
+
+function toggleMicPanel() {
+  const panel = $('#mic-panel');
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) {
+    fillDevices();
+    meter();
+  }
+}
+
+function meter() {
+  if ($('#mic-panel').hidden) return;
+  $('#mic-meter i').style.width = `${Math.min(100, Math.round(mic.level * 100))}%`;
+  requestAnimationFrame(meter);
+}
+
+function initMicPanel() {
+  $('#mic-button').append(icon('mic'));
+  const why = Mic.unsupported();
+  if (why) {
+    $('#mic-error').hidden = false;
+    $('#mic-error').textContent = why;
+    for (const input of document.querySelectorAll('#mic-panel input, #mic-panel select, #mic-panel button')) input.disabled = true;
+  }
+  $('#mic-button').onclick = toggleMicPanel;
+  $('#mic-on').onchange = (e) => mic.set({ on: e.target.checked });
+  for (const k of ['volume', 'echo', 'reverb']) {
+    $(`#mic-${k}`).oninput = (e) => mic.set({ [k]: Number(e.target.value) });
+  }
+  $('#mic-device').onchange = (e) => mic.set({ deviceId: e.target.value, on: true }).then(fillDevices);
+  for (const b of document.querySelectorAll('[data-preset]')) b.onclick = () => mic.set(PRESETS[b.dataset.preset]);
+  $('#mic-measure').onclick = async () => {
+    $('#mic-measure').disabled = true;
+    $('#mic-latency').textContent = 'Listening for three clicks…';
+    const ms = await mic.measure().catch((err) => { $('#mic-latency').textContent = err.message; return undefined; });
+    if (ms === null) $('#mic-latency').textContent = latencyVerdict(null);
+    $('#mic-measure').disabled = false;
+  };
+  navigator.mediaDevices?.addEventListener?.('devicechange', fillDevices);
+  micChanged();
+}
+
 // --- Start, keys, cursor ------------------------------------------------------------
 function start() {
   if (tv.started) return;
   tv.started = true;
   document.body.classList.add('started');
   loadYouTubeAPI();
+  if (!Mic.unsupported()) {
+    mic.context(); // the click that started the TV is what lets audio run
+    if (mic.settings.on) mic.open().then(() => micChanged());
+  }
   route();
   report();
 }
@@ -371,7 +473,7 @@ document.addEventListener('keydown', (e) => {
     ' ': () => onCommand({ action: 'toggle' }), k: () => onCommand({ action: 'toggle' }),
     ArrowRight: () => onCommand({ action: 'seek', value: 10 }), ArrowLeft: () => onCommand({ action: 'seek', value: -10 }),
     ArrowUp: () => onCommand({ action: 'volume', value: 5 }), ArrowDown: () => onCommand({ action: 'volume', value: -5 }),
-    m: () => onCommand({ action: 'mute' }), f: toggleFullscreen,
+    m: () => onCommand({ action: 'mute' }), f: toggleFullscreen, v: toggleMicPanel,
     n: () => tv.state?.current && finish(tv.state.current.qid),
   };
   const run = keys[e.key] || keys[e.key.toLowerCase()];
@@ -387,6 +489,7 @@ document.addEventListener('mousemove', () => {
 
 async function init() {
   $('#start-button').onclick = start;
+  initMicPanel();
   setPhase('idle');
   try {
     const info = await api('/api/info');
@@ -405,4 +508,5 @@ init();
 
 // For the console: what the TV thinks it is doing.
 window.karaokeTV = tv;
+window.karaokeMic = mic;
 window.fmtTime = fmtTime;

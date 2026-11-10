@@ -69,6 +69,29 @@ set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose
 Settings on the phone (gear icon): **Download every song** plays everything from the server's
 copy (no YouTube ads; each song waits for its download), and the length of the "up next" card.
 
+## Singing through the computer
+
+Plug a USB mic into the computer that shows the TV page, click the mic button at the bottom
+left (or press **V**), and switch it on. The page runs the voice through the chain a karaoke
+machine uses: a high-pass filter for rumble and pops, a little EQ (less boom, more presence),
+a gentle compressor, the karaoke echo, a reverb, and a limiter. **Echo** and **Reverb** are
+the two knobs that matter, with *Dry*, *KTV* and *Hall* as starting points. Phones get a mic
+card under the song for turning it on, setting levels and picking a preset mid-song.
+
+- **The mic only works on `localhost` or HTTPS**, a browser rule. Opening the TV page on the
+  server's own computer (`http://localhost:8765/tv`) is fine. For a TV browser on another
+  machine, serve HTTPS (`-tls-cert`/`-tls-key`, or `tailscale serve`).
+- **Delay.** You hear yourself a little late, because the sound goes through the computer.
+  **Measure delay** plays three clicks through the speakers and times their return through
+  the mic. Under about 25 ms feels natural. On Linux, PipeWire's buffer adds to it; if the
+  figure is high, try `pw-metadata -n settings 0 clock.force-quantum 256` (and `0` to undo).
+- **Feedback.** Headphones, or a mic pointed away from the speakers, prevent it. If it starts
+  to howl (a loud tone that holds one pitch for a second), the page turns the mic down.
+- The browser's call processing (echo cancellation, noise suppression, auto gain) is off: it
+  treats a held note as noise and pumps the level.
+- For no delay at all, use a mixer or a karaoke speaker with the mics plugged into it, and the
+  computer's sound into its line-in.
+
 ## How playback is chosen
 
 For each song the server decides, and the TV follows:

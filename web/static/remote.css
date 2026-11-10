@@ -54,6 +54,25 @@ button:disabled { opacity: .45; cursor: default; }
 .controls button.main { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; color: #fff; }
 .now.idle { text-align: center; color: var(--muted); padding: 22px 14px; }
 
+/* The TV's mic */
+.mic {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 12px; margin: -4px 0 14px; display: grid; gap: 6px;
+}
+.mic-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mic-toggle {
+  display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+}
+.mic-toggle.on { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; color: #fff; }
+.mic .presets { display: flex; gap: 4px; }
+.mic .presets .ghost { padding: 6px 10px; font-size: .85rem; }
+.step { display: flex; align-items: center; gap: 8px; }
+.step .name { flex: 1; color: var(--muted); }
+.step output { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.step .act { width: 36px; height: 36px; font-size: 1.2rem; }
+.mic .hint { margin: 0; font-size: .8rem; }
+
 /* Tabs */
 .tabs { display: flex; gap: 4px; background: var(--panel); border-radius: 999px; padding: 4px; margin-bottom: 14px; }
 .tabs button { flex: 1; border: 0; background: none; padding: 8px; border-radius: 999px; color: var(--muted); }

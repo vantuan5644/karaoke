@@ -420,12 +420,16 @@ func TestCommandsAndStatusReachTheEventStream(t *testing.T) {
 	if resp, _ := h.do("POST", "/api/player/command", `{"action":"self-destruct"}`); resp.StatusCode != 400 {
 		t.Errorf("unknown action = %d", resp.StatusCode)
 	}
-	if resp, _ := h.do("POST", "/api/player/status", `{"qid":"x","state":"playing","position":12,"duration":200,"volume":180}`); resp.StatusCode != 204 {
+	if resp, _ := h.do("POST", "/api/player/status", `{"qid":"x","state":"playing","position":12,"duration":200,"volume":180,"mic":{"on":true,"volume":900,"echo":-5,"reverb":40,"latencyMs":21}}`); resp.StatusCode != 204 {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	if e := expect("player "); !strings.Contains(e, `"volume":100`) {
-		t.Errorf("player event %q, want volume clamped", e)
+	if e := expect("player "); !strings.Contains(e, `"volume":100`) || !strings.Contains(e, `"mic":{"on":true,"volume":200,"echo":0,"reverb":40`) {
+		t.Errorf("player event %q, want volume and mic clamped", e)
 	}
+	if resp, _ := h.do("POST", "/api/player/command", `{"action":"mic-echo","value":10}`); resp.StatusCode != 200 {
+		t.Errorf("mic command = %d", resp.StatusCode)
+	}
+	expect("command ")
 	if s := h.state(); s.Player == nil || s.Player.Position != 12 {
 		t.Errorf("snapshot player = %+v", s.Player)
 	}

@@ -57,6 +57,38 @@
   <div id="nextbar" class="nextbar"></div>
   <div id="osd" class="osd"></div>
 
+  <button id="mic-button" class="mic-button" type="button" aria-label="Mic settings" title="Mic (V)"></button>
+  <aside id="mic-panel" class="mic-panel" aria-label="Mic" hidden>
+    <header>
+      <h2>Mic</h2>
+      <label class="switch"><input type="checkbox" id="mic-on"><span></span>On</label>
+    </header>
+    <p id="mic-error" class="mic-error" hidden></p>
+    <label class="field">Input
+      <select id="mic-device"><option value="">Default mic</option></select>
+    </label>
+    <div class="meter-row"><div id="mic-meter" class="level"><i></i></div></div>
+    <label class="field">Mic volume <output id="mic-volume-out"></output>
+      <input id="mic-volume" type="range" min="0" max="200" step="5">
+    </label>
+    <label class="field">Echo <output id="mic-echo-out"></output>
+      <input id="mic-echo" type="range" min="0" max="100" step="5">
+    </label>
+    <label class="field">Reverb <output id="mic-reverb-out"></output>
+      <input id="mic-reverb" type="range" min="0" max="100" step="5">
+    </label>
+    <div class="presets">
+      <button type="button" data-preset="dry">Dry</button>
+      <button type="button" data-preset="ktv">KTV</button>
+      <button type="button" data-preset="hall">Hall</button>
+    </div>
+    <div class="latency">
+      <button type="button" id="mic-measure">Measure delay</button>
+      <p id="mic-latency" class="hint">Plays three clicks and times how long each takes to come back through the mic.</p>
+    </div>
+    <p class="hint">Headphones, or a mic pointed away from the speakers, stop feedback. If it howls, the mic turns itself down.</p>
+  </aside>
+
   <section id="start" class="start">
     <button id="start-button" type="button">
       <span class="big">Start</span>

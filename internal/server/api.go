@@ -18,13 +18,26 @@ import (
 
 // PlayerStatus is what the TV last reported about the song playing.
 type PlayerStatus struct {
-	QID      string  `json:"qid"`
-	State    string  `json:"state"` // "playing", "paused", "buffering", "waiting", "idle" or "error"
-	Position float64 `json:"position"`
-	Duration float64 `json:"duration"`
-	Volume   int     `json:"volume"`
-	Muted    bool    `json:"muted"`
-	Started  bool    `json:"started"` // the TV has had the click browsers ask for before sound
+	QID      string     `json:"qid"`
+	State    string     `json:"state"` // "playing", "paused", "buffering", "waiting", "idle" or "error"
+	Position float64    `json:"position"`
+	Duration float64    `json:"duration"`
+	Volume   int        `json:"volume"`
+	Muted    bool       `json:"muted"`
+	Started  bool       `json:"started"` // the TV has had the click browsers ask for before sound
+	Mic      *MicStatus `json:"mic,omitempty"`
+}
+
+// MicStatus is the TV's mic, so phones can show and nudge it.
+type MicStatus struct {
+	On        bool    `json:"on"`
+	Volume    int     `json:"volume"`
+	Echo      int     `json:"echo"`
+	Reverb    int     `json:"reverb"`
+	Device    string  `json:"device,omitempty"`
+	LatencyMs float64 `json:"latencyMs,omitempty"` // the measured round trip
+	OutputMs  float64 `json:"outputMs,omitempty"`  // what the browser says its output adds
+	Error     string  `json:"error,omitempty"`
 }
 
 const statusFresh = 10 * time.Second
@@ -34,6 +47,7 @@ var (
 	playerActions = map[string]bool{
 		"toggle": true, "play": true, "pause": true, "restart": true,
 		"seek": true, "volume": true, "mute": true,
+		"mic-toggle": true, "mic-volume": true, "mic-echo": true, "mic-reverb": true, "mic-preset": true,
 	}
 	playerStates = map[string]bool{
 		"playing": true, "paused": true, "buffering": true, "waiting": true, "idle": true, "error": true,
@@ -240,6 +254,15 @@ func (s *Server) playerStatus(w http.ResponseWriter, r *http.Request) {
 	p.Position = clampFloat(p.Position, 0, 36000)
 	p.Duration = clampFloat(p.Duration, 0, 36000)
 	p.Volume = int(clampFloat(float64(p.Volume), 0, 100))
+	if m := p.Mic; m != nil {
+		m.Volume = int(clampFloat(float64(m.Volume), 0, 200))
+		m.Echo = int(clampFloat(float64(m.Echo), 0, 100))
+		m.Reverb = int(clampFloat(float64(m.Reverb), 0, 100))
+		m.Device = clean(m.Device, 100)
+		m.LatencyMs = clampFloat(m.LatencyMs, 0, 5000)
+		m.OutputMs = clampFloat(m.OutputMs, 0, 5000)
+		m.Error = clean(m.Error, 200)
+	}
 	s.mu.Lock()
 	s.status, s.statusAt = p, time.Now()
 	s.mu.Unlock()

@@ -59,11 +59,11 @@ computer at home.
   the ID, the embed check is redone, text is trimmed and capped, and cross-site writes are
   refused.
 
-## Voice and audio (next)
+## Voice and audio
 
 The user asked for all four, PC with a USB mic first (2026-11-10):
 
-1. **Mic in the TV page.** `getUserMedia` with echo cancellation, noise suppression and auto
+1. **Mic in the TV page** (done, `web/static/mic.js`). `getUserMedia` with echo cancellation, noise suppression and auto
    gain off (they are tuned for calls and treat a held note as noise; Jeff Kaufman measured
    Chrome going from about 67 ms to about 19 ms end to end with them off and `latency: 0`).
    The chain: high-pass 80 to 100 Hz, compressor about 3:1, EQ (cut 200 to 500 Hz, lift 3 to
@@ -72,6 +72,16 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    have their own levels. The page shows its measured latency; under 20 to 25 ms feels
    natural. On Linux, PipeWire's quantum adds to it (1024 samples = 21 ms by default). The
    mic needs a secure context: `localhost`, or HTTPS.
+
+   What was tested: in Chromium the track came up with all three call features off and 10 ms
+   of reported input latency. With WAV files as the mic, a sung note with vibrato that
+   changes every 1.5 s never tripped the feedback guard, and a 0.9-amplitude 1870 Hz tone
+   tripped it after one second. The first guard (60% of the energy in one peak for 350 ms)
+   would have cut singers' held notes, so it now waits for a loud peak (level 0.5, 70% of the
+   energy) that stays in one FFT bin for a full second, then cuts 40%, at most every 3 s and
+   never below 25%. The delay probe is unit-tested against a simulated room (8 to 130 ms
+   read back within 1 ms). On omarchy the USB PnP mic is the default source, mono at
+   48 kHz, the same rate as the page's AudioContext, so nothing is resampled.
 2. **Key change** for downloaded songs, in the TV page: signalsmith-stretch (MIT, official
    WASM/AudioWorklet build), semitone shift with formant compensation.
 3. **Vocal removal** for downloaded songs, on the server: a RoFormer model (BS-RoFormer or

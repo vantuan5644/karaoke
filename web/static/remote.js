@@ -127,36 +127,107 @@ function playStatus(entry) {
   return { playing: 'Playing', paused: 'Paused', buffering: 'Loading…', waiting: 'Up next card', error: 'Playback error' }[p.state] || '';
 }
 
+const command = (action, value = 0) => attempt(() => api('/api/player/command', { method: 'POST', body: { action, value } }));
+
+// The now-playing card is built once per song and then updated in place: rebuilding it on
+// every status report (once a second) would swap a button out from under a finger mid-tap.
+let nowKey = '';
+let nowRefs = null;
+
 function renderNow() {
   const now = $('#now');
   const cur = view.state?.current;
   if (!cur) {
-    now.className = 'now idle';
-    now.replaceChildren(el('div', { text: 'Nothing playing. Search for a song to start the night.' }));
+    if (nowKey !== 'idle') {
+      now.className = 'now idle';
+      now.replaceChildren(el('div', { text: 'Nothing playing. Search for a song to start the night.' }));
+      nowKey = 'idle';
+      nowRefs = null;
+    }
+    renderMic();
     return;
+  }
+  const key = `${cur.qid}|${cur.song.title}|${cur.singer}`;
+  if (key !== nowKey) {
+    nowKey = key;
+    nowRefs = {
+      status: el('div', { class: 'status' }),
+      fill: el('i'),
+      position: el('span'),
+      duration: el('span'),
+      toggle: el('button', { type: 'button', class: 'main', onclick: () => command('toggle') }),
+    };
+    now.className = 'now';
+    now.replaceChildren(
+      el('div', { class: 'row' },
+        el('img', { src: cur.song.thumb, alt: '' }),
+        el('div', { class: 'what' },
+          el('div', { class: 'label', text: 'Now singing' }),
+          el('div', { class: 'title', text: cur.song.title }),
+          cur.singer ? el('div', { class: 'singer', text: `🎤 ${cur.singer}` }) : null,
+          nowRefs.status)),
+      el('div', { class: 'bar' }, nowRefs.fill),
+      el('div', { class: 'times' }, nowRefs.position, nowRefs.duration),
+      el('div', { class: 'controls' },
+        el('button', { type: 'button', 'aria-label': 'Volume down', onclick: () => command('volume', -10) }, icon('volDown')),
+        el('button', { type: 'button', 'aria-label': 'Restart the song', onclick: () => command('restart') }, icon('restart')),
+        nowRefs.toggle,
+        el('button', { type: 'button', 'aria-label': 'Skip to the next song', onclick: skip }, icon('next')),
+        el('button', { type: 'button', 'aria-label': 'Volume up', onclick: () => command('volume', 10) }, icon('volUp'))));
   }
   const p = view.player && view.player.qid === cur.qid ? view.player : null;
   const duration = p?.duration || cur.song.duration || 0;
   const position = p?.position || 0;
   const paused = p ? p.state !== 'playing' : false;
-  const command = (action, value = 0) => attempt(() => api('/api/player/command', { method: 'POST', body: { action, value } }));
-  now.className = 'now';
-  now.replaceChildren(
-    el('div', { class: 'row' },
-      el('img', { src: cur.song.thumb, alt: '' }),
-      el('div', { class: 'what' },
-        el('div', { class: 'label', text: 'Now singing' }),
-        el('div', { class: 'title', text: cur.song.title }),
-        cur.singer ? el('div', { class: 'singer', text: `🎤 ${cur.singer}` }) : null,
-        el('div', { class: 'status', text: playStatus(cur) }))),
-    el('div', { class: 'bar' }, el('i', { style: { width: duration ? `${Math.min(100, (position / duration) * 100)}%` : '0' } })),
-    el('div', { class: 'times' }, el('span', { text: fmtTime(position) }), el('span', { text: fmtTime(duration) })),
-    el('div', { class: 'controls' },
-      el('button', { type: 'button', 'aria-label': 'Volume down', onclick: () => command('volume', -10) }, icon('volDown')),
-      el('button', { type: 'button', 'aria-label': 'Restart the song', onclick: () => command('restart') }, icon('restart')),
-      el('button', { type: 'button', class: 'main', 'aria-label': paused ? 'Play' : 'Pause', onclick: () => command('toggle') }, icon(paused ? 'play' : 'pause')),
-      el('button', { type: 'button', 'aria-label': 'Skip to the next song', onclick: skip }, icon('next')),
-      el('button', { type: 'button', 'aria-label': 'Volume up', onclick: () => command('volume', 10) }, icon('volUp'))));
+  nowRefs.status.textContent = playStatus(cur);
+  nowRefs.fill.style.width = duration ? `${Math.min(100, (position / duration) * 100)}%` : '0';
+  nowRefs.position.textContent = fmtTime(position);
+  nowRefs.duration.textContent = fmtTime(duration);
+  if (nowRefs.paused !== paused) {
+    nowRefs.paused = paused;
+    nowRefs.toggle.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+    nowRefs.toggle.replaceChildren(icon(paused ? 'play' : 'pause'));
+  }
+  renderMic();
+}
+
+// --- The TV's mic ---------------------------------------------------------
+let micRefs = null;
+
+function renderMic() {
+  const card = $('#mic');
+  const m = view.player?.mic;
+  if (!m || (!m.on && m.error && m.error.includes('localhost'))) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  if (!micRefs) {
+    const step = (label, action, delta, out) => el('div', { class: 'step' },
+      el('span', { class: 'name', text: label }),
+      el('button', { type: 'button', class: 'act', 'aria-label': `${label} down`, onclick: () => command(action, -delta) }, '−'),
+      out,
+      el('button', { type: 'button', class: 'act', 'aria-label': `${label} up`, onclick: () => command(action, delta) }, '+'));
+    micRefs = {
+      toggle: el('button', { type: 'button', class: 'mic-toggle', onclick: () => command('mic-toggle') }, icon('mic'), el('span')),
+      volume: el('output'), echo: el('output'), reverb: el('output'),
+      note: el('div', { class: 'hint' }),
+    };
+    card.replaceChildren(
+      el('div', { class: 'mic-head' }, micRefs.toggle,
+        el('div', { class: 'presets' },
+          ...['Dry', 'KTV', 'Hall'].map((name, i) => el('button', { type: 'button', class: 'ghost', onclick: () => command('mic-preset', i) }, name)))),
+      step('Mic', 'mic-volume', 10, micRefs.volume),
+      step('Echo', 'mic-echo', 10, micRefs.echo),
+      step('Reverb', 'mic-reverb', 10, micRefs.reverb),
+      micRefs.note);
+  }
+  micRefs.toggle.classList.toggle('on', m.on);
+  micRefs.toggle.lastChild.textContent = m.on ? 'Mic on' : 'Mic off';
+  micRefs.volume.textContent = `${m.volume}%`;
+  micRefs.echo.textContent = m.echo;
+  micRefs.reverb.textContent = m.reverb;
+  micRefs.note.textContent = m.error || (m.latencyMs ? `Delay ${m.latencyMs} ms${m.device ? ' · ' + m.device : ''}` : m.device || '');
 }
 
 async function skip() {

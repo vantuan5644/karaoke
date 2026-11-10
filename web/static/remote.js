@@ -1,6 +1,7 @@
 // The phone remote: search, queue a song under your name, and drive the TV.
 import { api, connect, el, fmtTime, icon, save, store } from './live.js';
 import { initLyrics } from './remote-lyrics.js';
+import { TUNE_PRESETS, scaleLabel } from './mic-core.js';
 import { LIBRARY_LIMIT, addedMessage, badge, canPlay, queueSong, searchLibrary, searchYouTube, songMeta, thumb } from './songs.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -230,12 +231,18 @@ function renderMic() {
       toggle: el('button', { type: 'button', class: 'mic-toggle', onclick: () => command('mic-toggle') }, icon('mic'), el('span')),
       volume: el('output'), echo: el('output'), reverb: el('output'),
       warmth: el('output'), bright: el('output'), double: el('output'), tune: el('output'),
+      boost: el('output'), speed: el('output'),
+      notes: el('button', { type: 'button', class: 'ghost notes', onclick: () => command('mic-scale') }),
+      tunePresets: ['Off', 'Natural', 'Strong', 'Robot'].map((name, i) => el('button', {
+        type: 'button', class: 'ghost', 'data-preset': name.toLowerCase(), onclick: () => command('mic-tune-preset', i),
+      }, name)),
       note: el('div', { class: 'hint' }),
     };
     card.replaceChildren(
       el('div', { class: 'mic-head' }, micRefs.toggle,
         el('div', { class: 'presets' },
           ...['Dry', 'KTV', 'Hall'].map((name, i) => el('button', { type: 'button', class: 'ghost', onclick: () => command('mic-preset', i) }, name)))),
+      step('Boost', 'mic-boost', 2, micRefs.boost),
       step('Mic', 'mic-volume', 10, micRefs.volume),
       step('Echo', 'mic-echo', 10, micRefs.echo),
       step('Reverb', 'mic-reverb', 10, micRefs.reverb),
@@ -243,13 +250,24 @@ function renderMic() {
       step('Warmth', 'mic-warmth', 10, micRefs.warmth),
       step('Bright', 'mic-bright', 10, micRefs.bright),
       step('Double', 'mic-double', 10, micRefs.double),
+      el('h3', { class: 'mic-sub', text: 'Auto-tune' }),
+      el('div', { class: 'presets tune-presets' }, ...micRefs.tunePresets),
       step('Tune', 'mic-tune', 10, micRefs.tune),
+      step('Speed', 'mic-speed', 10, micRefs.speed),
+      el('div', { class: 'step' }, el('span', { class: 'name', text: 'Notes' }), micRefs.notes),
       micRefs.note);
   }
   micRefs.toggle.classList.toggle('on', m.on);
   micRefs.toggle.lastChild.textContent = m.on ? 'Mic on' : 'Mic off';
   micRefs.volume.textContent = `${m.volume}%`;
-  for (const k of ['echo', 'reverb', 'warmth', 'bright', 'double', 'tune']) micRefs[k].textContent = m[k] ?? 0;
+  for (const k of ['echo', 'reverb', 'warmth', 'bright', 'double', 'tune', 'speed']) micRefs[k].textContent = m[k] ?? 0;
+  micRefs.boost.textContent = m.boost ? `+${m.boost} dB` : '0 dB';
+  // The button switches between every semitone and the song's key; a key picked on the TV shows as it is.
+  micRefs.notes.textContent = m.scale === 'song' && m.songKey ? `Song's key: ${m.songKey}` : scaleLabel(m.scale || 'chromatic');
+  for (const b of micRefs.tunePresets) {
+    const p = TUNE_PRESETS[b.dataset.preset];
+    b.classList.toggle('on', m.tune === p.tune && (!p.tune || m.speed === p.speed));
+  }
   const where = m.engine === 'native' ? 'Low latency' : '';
   const delay = m.latencyMs ? `Delay ${m.latencyMs} ms` : '';
   micRefs.note.textContent = m.error || [delay, where, m.device].filter(Boolean).join(' · ');

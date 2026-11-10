@@ -500,7 +500,7 @@ func TestWantedDownloadsWhatWontEmbedAndKeepsEverythingStillToPlay(t *testing.T)
 	}
 	cur := entry("playing0001", true)
 	st := room.State{Current: &cur, Queue: []room.Entry{entry("blocked0001", false), entry("embeds00001", true), {}}}
-	download, keep := wanted(st)
+	download, keep := wanted(st, nil)
 	if fmt.Sprint(download) != "[blocked0001]" {
 		t.Errorf("download = %v", download)
 	}
@@ -509,7 +509,7 @@ func TestWantedDownloadsWhatWontEmbedAndKeepsEverythingStillToPlay(t *testing.T)
 		t.Errorf("keep = %v", keep)
 	}
 	st.Settings.AlwaysDownload = true
-	if download, _ := wanted(st); fmt.Sprint(download) != "[playing0001 blocked0001 embeds00001]" {
+	if download, _ := wanted(st, nil); fmt.Sprint(download) != "[playing0001 blocked0001 embeds00001]" {
 		t.Errorf("download with alwaysDownload = %v", download)
 	}
 }

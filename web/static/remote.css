@@ -67,6 +67,9 @@ button:disabled { opacity: .45; cursor: default; }
 .mic-toggle.on { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; color: #fff; }
 .mic .presets { display: flex; gap: 4px; }
 .mic .presets .ghost { padding: 6px 10px; font-size: .85rem; }
+.mic .presets .ghost.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mic .tune-presets .ghost { flex: 1; }
+.mic .notes { padding: 6px 10px; font-size: .9rem; }
 .step { display: flex; align-items: center; gap: 8px; }
 .step .name { flex: 1; color: var(--muted); }
 .step output { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }

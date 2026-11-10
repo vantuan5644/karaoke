@@ -7,14 +7,19 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 
 	"github.com/vantuan5644/karaoke/internal/room"
+	"github.com/vantuan5644/karaoke/internal/voice"
 	"github.com/vantuan5644/karaoke/internal/youtube"
 )
+
+// micScale is a Scale the TV may report (mic-core.js's SCALES).
+var micScale = regexp.MustCompile(`^(chromatic|song|key-([0-9]|1[01]))$`)
 
 // PlayerStatus is what the TV last reported about the song playing.
 type PlayerStatus struct {
@@ -39,7 +44,11 @@ type MicStatus struct {
 	Bright    int     `json:"bright"`
 	Double    int     `json:"double"`
 	Tune      int     `json:"tune"`
-	Engine    string  `json:"engine,omitempty"` // "native" (PipeWire on the server) or "browser"
+	Speed     int     `json:"speed"`
+	Boost     int     `json:"boost"`             // dB
+	Scale     string  `json:"scale,omitempty"`   // the notes Tune pulls to: "chromatic", "song" or "key-N"
+	SongKey   string  `json:"songKey,omitempty"` // the song's key, when Tune follows it: "A minor"
+	Engine    string  `json:"engine,omitempty"`  // "native" (PipeWire on the server) or "browser"
 	Device    string  `json:"device,omitempty"`
 	LatencyMs float64 `json:"latencyMs,omitempty"` // the measured round trip
 	OutputMs  float64 `json:"outputMs,omitempty"`  // what the browser says its output adds
@@ -57,6 +66,7 @@ var (
 		"seek": true, "volume": true, "mute": true,
 		"mic-toggle": true, "mic-volume": true, "mic-echo": true, "mic-reverb": true, "mic-preset": true,
 		"mic-warmth": true, "mic-bright": true, "mic-double": true, "mic-tune": true,
+		"mic-speed": true, "mic-boost": true, "mic-scale": true, "mic-tune-preset": true,
 		"lyrics-toggle": true, "lyrics-scroll": true,
 	}
 	playerStates = map[string]bool{
@@ -285,6 +295,12 @@ func (s *Server) playerStatus(w http.ResponseWriter, r *http.Request) {
 		m.Bright = int(clampFloat(float64(m.Bright), 0, 100))
 		m.Double = int(clampFloat(float64(m.Double), 0, 100))
 		m.Tune = int(clampFloat(float64(m.Tune), 0, 100))
+		m.Speed = int(clampFloat(float64(m.Speed), 0, 100))
+		m.Boost = int(clampFloat(float64(m.Boost), 0, voice.MaxBoostDb))
+		if !micScale.MatchString(m.Scale) {
+			m.Scale = "chromatic"
+		}
+		m.SongKey = clean(m.SongKey, 40)
 		if m.Engine != "native" {
 			m.Engine = "browser"
 		}

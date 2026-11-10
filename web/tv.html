@@ -101,6 +101,9 @@
     </label>
     <p id="mic-engine" class="hint"></p>
     <div class="meter-row"><div id="mic-meter" class="level"><i></i></div></div>
+    <label class="field" title="The mic's level going in, before anything else: for a quiet mic. Sing your loudest and keep the meter out of the far right">Mic boost <output id="mic-boost-out"></output>
+      <input id="mic-boost" type="range" min="0" max="24" step="1">
+    </label>
     <label class="field">Mic volume <output id="mic-volume-out"></output>
       <input id="mic-volume" type="range" min="0" max="200" step="5">
     </label>
@@ -110,6 +113,11 @@
     <label class="field">Reverb <output id="mic-reverb-out"></output>
       <input id="mic-reverb" type="range" min="0" max="100" step="5">
     </label>
+    <div class="presets">
+      <button type="button" data-preset="dry">Dry</button>
+      <button type="button" data-preset="ktv">KTV</button>
+      <button type="button" data-preset="hall">Hall</button>
+    </div>
     <h3 class="sub">Voice</h3>
     <div class="knob-grid">
       <label class="field" title="Body in the low mids">Warmth <output id="mic-warmth-out"></output>
@@ -121,16 +129,27 @@
       <label class="field" title="A second voice beside the first, for a fuller sound">Double <output id="mic-double-out"></output>
         <input id="mic-double" type="range" min="0" max="100" step="5">
       </label>
-      <label class="field" title="Pitch correction: pulls each note toward the nearest semitone. 100 snaps hard, the robotic effect">Tune <output id="mic-tune-out"></output>
+    </div>
+    <h3 class="sub">Auto-tune</h3>
+    <div class="presets tune-presets">
+      <button type="button" data-tune-preset="off">Off</button>
+      <button type="button" data-tune-preset="natural">Natural</button>
+      <button type="button" data-tune-preset="strong">Strong</button>
+      <button type="button" data-tune-preset="robot">Robot</button>
+    </div>
+    <div class="knob-grid">
+      <label class="field" title="How far each note is pulled to the right one: 0 is off, 100 all the way">Tune <output id="mic-tune-out"></output>
         <input id="mic-tune" type="range" min="0" max="100" step="5">
       </label>
+      <label class="field" title="How fast: slow keeps slides and vibrato, 100 jumps from note to note (the robot)">Speed <output id="mic-speed-out"></output>
+        <input id="mic-speed" type="range" min="0" max="100" step="5">
+      </label>
     </div>
-    <p class="hint">Tune pulls notes toward the nearest semitone (40-60 sounds natural, 100 is the robot effect) and makes the voice 8 ms later while it is on.</p>
-    <div class="presets">
-      <button type="button" data-preset="dry">Dry</button>
-      <button type="button" data-preset="ktv">KTV</button>
-      <button type="button" data-preset="hall">Hall</button>
-    </div>
+    <label class="field" title="Which notes it pulls to">Notes
+      <select id="mic-scale"></select>
+    </label>
+    <p id="mic-songkey" class="hint"></p>
+    <p class="hint">Tune pulls each note toward the right one, Speed sets how fast, and Notes which notes count: every semitone, or only those of the song's key. While Tune is on, the voice comes back 8 ms later.</p>
     <div class="latency">
       <button type="button" id="mic-measure">Measure delay</button>
       <p id="mic-latency" class="hint">Plays three clicks and times how long each takes to come back through the mic.</p>

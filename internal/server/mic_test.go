@@ -171,4 +171,20 @@ func TestMicStatusCarriesTheToneKnobs(t *testing.T) {
 	if resp, _ := h.do("POST", "/api/player/command", `{"action":"mic-tune","value":10}`); resp.StatusCode != 200 {
 		t.Errorf("mic-tune command: %d", resp.StatusCode)
 	}
+	h.do("POST", "/api/player/status", `{"state":"idle","mic":{"on":true,"boost":40,"speed":-3,"scale":"key-11","songKey":"A minor"}}`)
+	m = h.state().Player.Mic
+	if m.Boost != 24 || m.Speed != 0 || m.Scale != "key-11" || m.SongKey != "A minor" {
+		t.Errorf("mic status = %+v", m)
+	}
+	for _, bad := range []string{"key-12", "lydian", "<b>"} {
+		h.do("POST", "/api/player/status", `{"state":"idle","mic":{"on":true,"scale":"`+bad+`"}}`)
+		if m := h.state().Player.Mic; m.Scale != "chromatic" {
+			t.Errorf("scale %q was let through as %q", bad, m.Scale)
+		}
+	}
+	for _, action := range []string{"mic-speed", "mic-boost", "mic-scale", "mic-tune-preset"} {
+		if resp, _ := h.do("POST", "/api/player/command", `{"action":"`+action+`","value":1}`); resp.StatusCode != 200 {
+			t.Errorf("%s command: %d", action, resp.StatusCode)
+		}
+	}
 }

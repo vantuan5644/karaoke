@@ -98,16 +98,33 @@ compressor, the karaoke echo, a reverb, and a limiter. **Echo** and **Reverb** a
 knobs that matter, with *Dry*, *KTV* and *Hall* as starting points. Phones get a mic card
 under the song for turning it on, setting levels and picking a preset mid-song.
 
+**Mic boost** (0 to 24 dB) is for a quiet mic: it raises the voice going in, before anything
+else, where **Mic volume** sets how loud it comes out. Sing your loudest and keep the level
+meter out of the far right.
+
 **Voice** has four more knobs, all off to start:
 
 - **Warmth** adds body in the low mids (a shelf at 220 Hz, up to +6 dB).
 - **Bright** adds presence and air (a shelf at 5 kHz, up to +8 dB), for a voice that sounds dull.
 - **Double** adds a second voice beside the first, two copies 14 and 23 ms late that drift a
   little in time, one to each side: a fuller sound, like a singer and their double take.
-- **Tune** is pitch correction ("auto-tune"). It finds the note you sing and pulls it toward the
-  nearest semitone. Around 40 to 60 it sounds natural: a note sung a little flat or sharp comes
-  out on pitch, and slides and vibrato survive. At 100 it snaps at once, the robotic effect.
-  While it is on, your voice comes back 8 ms later.
+
+**Auto-tune** (pitch correction) finds the note you sing and pulls it to the right one. It is
+off to start; *Natural*, *Strong* and *Robot* set it up in one press, and three controls tune
+it from there:
+
+- **Tune** is how far each note is pulled: 0 is off, 100 all the way onto the note.
+- **Speed** is how fast. Slow keeps slides and vibrato and only straightens a held note; 100
+  jumps from note to note at once, the robotic effect.
+- **Notes** is which notes count. *Every semitone* pulls to the nearest one, whatever the song.
+  *The song's key* pulls only to the song's own notes, so a note sung off goes to the nearest
+  note in the key, never to one outside it: the server hears the key in the song's sound
+  (it needs **ffmpeg**; a YouTube song is downloaded for it, so that needs **yt-dlp** too). A
+  key picked by hand works without either. Both follow a key change.
+
+While Tune is on, your voice comes back 8 ms later. The key is heard over the whole song, so a
+song that changes key part way (Bohemian Rhapsody) is pulled to one of its keys throughout:
+use *Every semitone* for those.
 
 ### Low latency: the mic outside the browser
 

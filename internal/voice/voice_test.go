@@ -112,30 +112,58 @@ func TestTuneOffChangesNothing(t *testing.T) {
 	}
 }
 
+// cMajor is the notes of C major (and A minor): C D E F G A B.
+const cMajor = 1<<0 | 1<<2 | 1<<4 | 1<<5 | 1<<7 | 1<<9 | 1<<11
+
 func TestTuneMovesANoteToTheNearestSemitone(t *testing.T) {
 	for _, c := range []struct {
-		in, want float64
-		tune     float64
-		within   float64 // cents
+		in, want    float64
+		tune, speed float64
+		notes       int
+		within      float64 // cents
 	}{
-		{in: 452.1, want: 440, tune: 100, within: 4},                                   // A4 + 47 cents, snapped
-		{in: 430, want: 440, tune: 100, within: 4},                                     // A4 - 40 cents
-		{in: 200, want: 196, tune: 100, within: 4},                                     // G3 + 35 cents
-		{in: 452.1, want: 440 * math.Pow(2, 0.47*(1-0.5/0.6)/12), tune: 50, within: 4}, // most of the way
+		{in: 452.1, want: 440, tune: 100, speed: 100, within: 4},                           // A4 + 47 cents, snapped
+		{in: 430, want: 440, tune: 100, speed: 100, within: 4},                             // A4 - 40 cents
+		{in: 200, want: 196, tune: 100, speed: 100, within: 4},                             // G3 + 35 cents
+		{in: 452.1, want: 440 * math.Pow(2, 0.47*0.5/12), tune: 50, speed: 100, within: 4}, // half way
+		{in: 452.1, want: 440, tune: 100, speed: 70, within: 4},                            // slower, still all the way
+		{in: 375, want: 370, tune: 100, speed: 100, within: 4},                             // F#4 + 24 cents: every semitone
+		{in: 375, want: 392, tune: 100, speed: 100, notes: cMajor, within: 4},              // in C major, F# is no note: G
+		{in: 440, want: 440, tune: 100, speed: 100, notes: cMajor, within: 4},              // A is in C major: left alone
 	} {
 		tu := newTuner()
-		tu.setTune(c.tune)
+		tu.setTune(c.tune, c.speed, c.notes)
 		out := process(tu, saw(c.in, Rate/2))
 		got := pitchOf(out)
 		if off := cents(got, c.want); math.Abs(off) > c.within {
-			t.Errorf("%v Hz at tune %v: came out %.1f Hz, %.1f cents from %.1f", c.in, c.tune, got, off, c.want)
+			t.Errorf("%v Hz at tune %v speed %v notes %03x: came out %.1f Hz, %.1f cents from %.1f",
+				c.in, c.tune, c.speed, c.notes, got, off, c.want)
 		}
+	}
+}
+
+func TestTuneSpeedSetsHowFastTheNoteMoves(t *testing.T) {
+	// How long a voice 47 cents sharp takes to come within 10 cents of the note.
+	settle := func(speed float64) float64 {
+		tu := newTuner()
+		tu.setTune(100, speed, 0)
+		for i, v := range saw(452.1, Rate) {
+			tu.process(v)
+			if i > Rate/50 && math.Abs(1200*math.Log2(tu.ratio*452.1/440)) < 10 {
+				return float64(i) / Rate
+			}
+		}
+		return 1
+	}
+	fast, slow := settle(100), settle(20)
+	if fast > 0.06 || slow < 3*fast || slow > 0.6 {
+		t.Errorf("settled in %.3f s at speed 100 and %.3f s at speed 20", fast, slow)
 	}
 }
 
 func TestTuneKeepsTheLevelAndTheDelay(t *testing.T) {
 	tu := newTuner()
-	tu.setTune(100)
+	tu.setTune(100, 100, 0)
 	x := saw(452.1, Rate/2)
 	out := process(tu, x)
 	half := len(x) / 2
@@ -147,7 +175,7 @@ func TestTuneKeepsTheLevelAndTheDelay(t *testing.T) {
 	// delay a singer hears while it is on.
 	for _, hz := range []float64{110, 452.1} {
 		tu = newTuner()
-		tu.setTune(100)
+		tu.setTune(100, 100, 0)
 		lo, hi := math.Inf(1), 0.0
 		for i, v := range saw(hz, Rate/2) {
 			tu.process(v)
@@ -162,7 +190,7 @@ func TestTuneKeepsTheLevelAndTheDelay(t *testing.T) {
 	}
 	// Noise (no note) comes through exactly DelayMs late.
 	tu = newTuner()
-	tu.setTune(100)
+	tu.setTune(100, 100, 0)
 	r := rand.New(rand.NewSource(2))
 	noise := make([]float64, Rate/4)
 	for i := range noise {
@@ -177,14 +205,27 @@ func TestTuneKeepsTheLevelAndTheDelay(t *testing.T) {
 }
 
 func TestTuneNoteChoiceHolds(t *testing.T) {
-	if got := noteFor(69.6, 69); got != 69 {
+	if got := noteFor(69.6, 69, 0); got != 69 {
 		t.Errorf("60 cents above a held A should stay on A, got %v", got)
 	}
-	if got := noteFor(69.7, 69); got != 70 {
+	if got := noteFor(69.7, 69, 0); got != 70 {
 		t.Errorf("70 cents above should move to B flat, got %v", got)
 	}
-	if got := noteFor(69.4, 0); got != 69 {
+	if got := noteFor(69.4, 0, 0); got != 69 {
 		t.Errorf("a fresh note takes the nearest semitone, got %v", got)
+	}
+	// In C major the next note up from A is B, two semitones: it holds A to 1.15 above.
+	if got := noteFor(70.1, 69, cMajor); got != 69 {
+		t.Errorf("in C major, 110 cents above a held A should stay on A, got %v", got)
+	}
+	if got := noteFor(70.2, 69, cMajor); got != 71 {
+		t.Errorf("in C major, 120 cents above A should move to B, got %v", got)
+	}
+	if got := noteFor(66.4, 66, cMajor); got != 67 {
+		t.Errorf("a held F# that is not in the key goes to G, got %v", got)
+	}
+	if got := noteFor(66, 0, cMajor); got != 65 {
+		t.Errorf("half way between F and G takes the lower, got %v", got)
 	}
 }
 
@@ -273,6 +314,20 @@ func TestSilenceDoesNotLeaveSubnormals(t *testing.T) {
 	}
 }
 
+func TestBoostRaisesTheMicGoingIn(t *testing.T) {
+	// The meter reads the voice before the compressor, so it shows the boost in full.
+	peak := func(boost int) float64 {
+		c := NewChain(ParamsFor(Settings{On: true, Volume: 100, Boost: boost}))
+		run(c, sine(300, Rate/4, 0.02))
+		c.Peak()
+		run(c, sine(300, Rate/4, 0.02))
+		return c.Peak()
+	}
+	if got := 20 * math.Log10(peak(12)/peak(0)); math.Abs(got-12) > 0.3 {
+		t.Errorf("a 12 dB boost raised the level %.2f dB", got)
+	}
+}
+
 // gainAt is how loud a tone of hz comes out of a dry chain (no echo or reverb), in dB.
 func gainAt(s Settings, hz float64) float64 {
 	s.On, s.Volume, s.Echo, s.Reverb = true, 100, 0, 0
@@ -352,24 +407,31 @@ func TestReverbTailLength(t *testing.T) {
 
 func TestParamsMatchTheBrowser(t *testing.T) {
 	// The same numbers mic-core.test.mjs checks for params().
-	p := ParamsFor(Settings{On: true, Volume: 150, Echo: 50, Reverb: 40, Warmth: 50, Bright: 25, Double: 50, Tune: 30})
-	want := Params{On: true, MicGain: 1.5, EchoSend: 0.35, EchoFeedback: 0.285, ReverbSend: 0.34, WarmthDb: 3, BrightDb: 2, DoubleMix: 0.35, Tune: 30}
+	p := ParamsFor(Settings{On: true, Volume: 150, Echo: 50, Reverb: 40, Warmth: 50, Bright: 25, Double: 50, Tune: 30,
+		Speed: 70, Notes: cMajor, Boost: 12})
+	want := Params{On: true, BoostGain: 3.981071705534973, MicGain: 1.5, EchoSend: 0.35, EchoFeedback: 0.285, ReverbSend: 0.34,
+		WarmthDb: 3, BrightDb: 2, DoubleMix: 0.35, Tune: 30, Speed: 70, Notes: 2741}
 	near := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
-	if p.On != want.On || p.Tune != want.Tune || !near(p.MicGain, want.MicGain) || !near(p.EchoSend, want.EchoSend) ||
+	if p.On != want.On || p.Tune != want.Tune || p.Speed != want.Speed || p.Notes != want.Notes ||
+		!near(p.BoostGain, want.BoostGain) || !near(p.MicGain, want.MicGain) || !near(p.EchoSend, want.EchoSend) ||
 		!near(p.EchoFeedback, want.EchoFeedback) || !near(p.ReverbSend, want.ReverbSend) || !near(p.WarmthDb, want.WarmthDb) ||
 		!near(p.BrightDb, want.BrightDb) || !near(p.DoubleMix, want.DoubleMix) {
 		t.Errorf("ParamsFor = %+v, want %+v", p, want)
 	}
-	if got := tuneParams(30); !near(got.amount, 0.5) || !near(got.seconds, 0.3*0.49+0.005) {
-		t.Errorf("tuneParams(30) = %+v", got)
+	if got := tuneParams(30, 50); !near(got.amount, 0.3) || !near(got.seconds, 0.4*0.25+0.005) {
+		t.Errorf("tuneParams(30, 50) = %+v", got)
 	}
-	if got := Normalize(Settings{Volume: 900, Tune: -4, Double: 101}); got.Volume != 200 || got.Tune != 0 || got.Double != 100 {
+	if got := tuneParams(0, 100); got.amount != 0 {
+		t.Errorf("tune 0 is off, got %+v", got)
+	}
+	got := Normalize(Settings{Volume: 900, Tune: -4, Double: 101, Boost: 99, Speed: -1, Notes: 9999})
+	if got.Volume != 200 || got.Tune != 0 || got.Double != 100 || got.Boost != 24 || got.Speed != 0 || got.Notes != 4095 {
 		t.Errorf("Normalize = %+v", got)
 	}
 }
 
 func BenchmarkChainOneSecond(b *testing.B) {
-	c := NewChain(ParamsFor(Settings{On: true, Volume: 100, Echo: 50, Reverb: 50, Warmth: 50, Bright: 50, Double: 50, Tune: 60}))
+	c := NewChain(ParamsFor(Settings{On: true, Volume: 100, Echo: 50, Reverb: 50, Warmth: 50, Bright: 50, Double: 50, Tune: 60, Speed: 50}))
 	x := saw(220, Rate)
 	in := make([]float32, 256)
 	out := make([]float32, 512)

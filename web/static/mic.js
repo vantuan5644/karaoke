@@ -135,6 +135,7 @@ export class Mic {
     const p = params(this.settings);
     const t = this.ctx.currentTime;
     const n = this.nodes;
+    n.input.gain.setTargetAtTime(p.boostGain, t, 0.02);
     n.mic.gain.setTargetAtTime(this.settings.on ? p.micGain : 0, t, 0.02);
     n.echoSend.gain.setTargetAtTime(p.echoSend, t, 0.05);
     n.echoFeedback.gain.setTargetAtTime(p.echoFeedback, t, 0.05);
@@ -143,17 +144,16 @@ export class Mic {
     n.warmth.gain.setTargetAtTime(p.warmthDb, t, 0.05);
     n.bright.gain.setTargetAtTime(p.brightDb, t, 0.05);
     n.doubleSend.gain.setTargetAtTime(p.doubleMix, t, 0.05);
-    this.tune(p.tune);
+    this.tune(tunePlan(p.tune, p.speed, p.notes));
   }
 
   // tune sets pitch correction, loading its worklet the first time it is wanted.
-  async tune(amount) {
-    const plan = tunePlan(amount);
+  async tune(plan) {
     if (this.tuner) {
       this.tuner.port.postMessage({ plan });
       return;
     }
-    if (!amount || this.tunerLoading) return;
+    if (!plan.amount || this.tunerLoading) return;
     this.tunerLoading = true;
     try {
       await this.ctx.audioWorklet.addModule('/static/tune-worklet.js');
@@ -162,7 +162,8 @@ export class Mic {
       this.tuner = new AudioWorkletNode(this.ctx, 'pitch-tuner', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
       n.tuneIn.disconnect();
       n.tuneIn.connect(this.tuner).connect(n.tuneOut);
-      this.tuner.port.postMessage({ plan: tunePlan(this.settings.tune) });
+      const p = params(this.settings);
+      this.tuner.port.postMessage({ plan: tunePlan(p.tune, p.speed, p.notes) });
     } catch (err) {
       this.error = `Pitch correction: ${err.message}`;
       this.onChange(this);
@@ -323,6 +324,9 @@ export class Mic {
       bright: s.bright,
       double: s.double,
       tune: s.tune,
+      boost: s.boost,
+      speed: s.speed,
+      scale: s.scale,
       engine: 'browser',
       device: this.device,
       latencyMs: this.latencyMs ?? 0,

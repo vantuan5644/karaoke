@@ -106,10 +106,29 @@ class Detector {
   }
 }
 
+// allowed says whether a MIDI note is one of notes (12 bits, C first; 0 allows every note).
+function allowed(note, notes) {
+  return notes === 0 || (notes & (1 << (((note % 12) + 12) % 12))) !== 0;
+}
+
+// nearestNote is the allowed note nearest a pitch; a tie goes to the lower.
+function nearestNote(midi, notes) {
+  let best = Math.round(midi);
+  let dist = Infinity;
+  for (let n = Math.floor(midi) - 6; n <= Math.ceil(midi) + 6; n++) {
+    const d = Math.abs(midi - n);
+    if (d < dist && allowed(n, notes)) [best, dist] = [n, d];
+  }
+  return best;
+}
+
+const NOTE_HOLD = 0.3; // semitones nearer another note before leaving the held one
+
 // noteFor holds the current note until the singer is clearly nearer another.
-function noteFor(midi, current) {
-  if (current > 0 && Math.abs(midi - current) < 0.65) return current;
-  return Math.round(midi);
+function noteFor(midi, current, notes) {
+  const best = nearestNote(midi, notes);
+  if (current > 0 && allowed(current, notes) && Math.abs(midi - current) < Math.abs(midi - best) + NOTE_HOLD) return current;
+  return best;
 }
 
 class Tuner {
@@ -124,13 +143,16 @@ class Tuner {
     this.mix = 0;
     this.amount = 0;
     this.smooth = 0;
+    this.notes = 0;
     this.reset();
   }
 
-  // setPlan takes mic-core's tunePlan: how much of the way to the note, and how quickly.
-  setPlan({ amount = 0, seconds = 0 } = {}) {
+  // setPlan takes mic-core's tunePlan: how much of the way to the note, how quickly, and to
+  // which notes.
+  setPlan({ amount = 0, seconds = 0, notes = 0 } = {}) {
     this.amount = Math.max(0, Math.min(1, amount));
     this.smooth = seconds > 0 ? 1 - Math.exp(-1 / (seconds * this.rate)) : 1;
+    this.notes = Number.isInteger(notes) ? notes & 0xfff : 0;
   }
 
   reset() {
@@ -194,7 +216,7 @@ class Tuner {
     }
     this.silent = 0;
     const midi = 69 + 12 * Math.log2(this.rate / period / 440);
-    this.note = noteFor(midi, this.note);
+    this.note = noteFor(midi, this.note, this.notes);
     this.target = Math.pow(2, (this.amount * (this.note - midi)) / 12);
   }
 

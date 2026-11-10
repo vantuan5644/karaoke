@@ -11,7 +11,10 @@ type Settings struct {
 	Warmth   int    `json:"warmth"` // 0..100: body in the low mids
 	Bright   int    `json:"bright"` // 0..100: presence and air
 	Double   int    `json:"double"` // 0..100: a second voice beside the first
-	Tune     int    `json:"tune"`   // 0..100: pitch correction, 0 is off
+	Tune     int    `json:"tune"`   // 0..100: how far pitch correction pulls a note, 0 is off
+	Speed    int    `json:"speed"`  // 0..100: how fast it pulls; 100 snaps at once
+	Notes    int    `json:"notes"`  // the notes it pulls to: 12 bits, C first; 0 is every semitone
+	Boost    int    `json:"boost"`  // 0..24 dB: the mic's level going in, before anything else
 	DeviceID string `json:"deviceId"`
 
 	// SeenHowls is how many feedback cuts the sender knew of when it sent these. A sender
@@ -21,7 +24,7 @@ type Settings struct {
 }
 
 // Defaults are what a new mic starts with.
-var Defaults = Settings{Volume: 100, Echo: 35, Reverb: 25}
+var Defaults = Settings{Volume: 100, Echo: 35, Reverb: 25, Speed: 50}
 
 func clampInt(v, lo, hi int) int { return max(lo, min(hi, v)) }
 
@@ -34,6 +37,9 @@ func Normalize(s Settings) Settings {
 	s.Bright = clampInt(s.Bright, 0, 100)
 	s.Double = clampInt(s.Double, 0, 100)
 	s.Tune = clampInt(s.Tune, 0, 100)
+	s.Speed = clampInt(s.Speed, 0, 100)
+	s.Notes = clampInt(s.Notes, 0, allNotes)
+	s.Boost = clampInt(s.Boost, 0, MaxBoostDb)
 	if len(s.DeviceID) > 200 {
 		s.DeviceID = ""
 	}
@@ -53,17 +59,19 @@ const (
 	brightMaxDb    = 8.0
 	echoSeconds    = 0.16
 	doubleMaxMix   = 0.7
+	MaxBoostDb     = 24
 )
 
 // Params are the knobs turned into the chain's numbers.
 type Params struct {
 	On                     bool
-	MicGain                float64
+	BoostGain              float64 // into the chain
+	MicGain                float64 // out of it
 	EchoSend, EchoFeedback float64
 	ReverbSend             float64
 	WarmthDb, BrightDb     float64
 	DoubleMix              float64
-	Tune                   int
+	Tune, Speed, Notes     int
 }
 
 // ParamsFor is the same arithmetic as the browser's params().
@@ -71,6 +79,7 @@ func ParamsFor(s Settings) Params {
 	n := Normalize(s)
 	return Params{
 		On:           n.On,
+		BoostGain:    math.Pow(10, float64(n.Boost)/20),
 		MicGain:      float64(n.Volume) / 100,
 		EchoSend:     float64(n.Echo) / 100 * 0.7,
 		EchoFeedback: 0.12 + float64(n.Echo)/100*0.33,
@@ -79,6 +88,8 @@ func ParamsFor(s Settings) Params {
 		BrightDb:     float64(n.Bright) / 100 * brightMaxDb,
 		DoubleMix:    float64(n.Double) / 100 * doubleMaxMix,
 		Tune:         n.Tune,
+		Speed:        n.Speed,
+		Notes:        n.Notes,
 	}
 }
 
@@ -93,6 +104,7 @@ type Chain struct {
 	limit                                   limiter
 
 	p      Params
+	boost  float64 // smoothed boost
 	gain   float64 // smoothed mic gain
 	sends  [4]float64
 	peak   float64 // the loudest sample since the last Peak
@@ -113,6 +125,7 @@ func NewChain(p Params) *Chain {
 	c.comp.makeup = c.comp.autoMakeup()
 	c.echo.delay = echoSeconds * Rate
 	c.Set(p)
+	c.boost = p.BoostGain
 	return c
 }
 
@@ -122,7 +135,7 @@ func (c *Chain) Set(p Params) {
 	c.warmth.shelf(warmthHz, p.WarmthDb, true)
 	c.bright.shelf(brightHz, p.BrightDb, false)
 	c.echo.feedback = p.EchoFeedback
-	c.tune.setTune(float64(p.Tune))
+	c.tune.setTune(float64(p.Tune), float64(p.Speed), p.Notes)
 }
 
 // Peak returns the loudest level since it was last asked, for the meter.
@@ -150,7 +163,8 @@ func (c *Chain) Process(in []float32, out []float32) {
 	}
 	sendTargets := [4]float64{c.p.EchoSend, c.p.ReverbSend, c.p.DoubleMix, 0}
 	for i, s := range in {
-		x := c.highpass.process(float64(s))
+		c.boost += (c.p.BoostGain - c.boost) * glide
+		x := c.highpass.process(float64(s) * c.boost)
 		x = c.tune.process(x)
 		x = c.warmth.process(x)
 		x = c.mud.process(x)

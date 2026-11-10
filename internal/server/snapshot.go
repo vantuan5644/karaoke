@@ -33,6 +33,7 @@ type Features struct {
 	Download bool `json:"download"` // yt-dlp is there, so videos that refuse to embed still play
 	Lyrics   bool `json:"lyrics"`   // lyrics can be looked up
 	Library  int  `json:"library"`  // songs in folders on this computer
+	Keys     bool `json:"keys"`     // songs' keys can be heard (ffmpeg is there), for pitch correction
 }
 
 const historyShown = 30
@@ -62,7 +63,7 @@ func (s *Server) snapshot() Snapshot {
 }
 
 func (s *Server) features() Features {
-	f := Features{Download: s.cfg.Downloader != nil, Lyrics: s.cfg.Lyrics != nil}
+	f := Features{Download: s.cfg.Downloader != nil, Lyrics: s.cfg.Lyrics != nil, Keys: s.cfg.Keys != nil}
 	if s.cfg.Library != nil {
 		f.Library = s.cfg.Library.Len()
 	}
@@ -104,16 +105,17 @@ func (s *Server) playFor(e room.Entry, settings room.Settings) Play {
 	return Play{Mode: "wait", Progress: st.Progress}
 }
 
-// wanted lists, in queue order, the videos to download (those that won't embed, or all of
-// them when the room asks for downloads), and the videos to keep on disk: every one still to
-// play, since a song already playing from its copy must not lose it to the cache trim.
-func wanted(st room.State) (download, keep []string) {
+// wanted lists, in queue order, the videos to download (those that won't embed, those in
+// another key or wanted for hearing their key (forKey), or all of them when the room asks for
+// downloads), and the videos to keep on disk: every one still to play, since a song already
+// playing from its copy must not lose it to the cache trim.
+func wanted(st room.State, forKey map[string]bool) (download, keep []string) {
 	add := func(e room.Entry) {
 		if e.Song.VideoID == "" {
 			return
 		}
 		keep = append(keep, e.Song.VideoID)
-		if !e.Song.Embeddable || st.Settings.AlwaysDownload || e.Key != 0 {
+		if !e.Song.Embeddable || st.Settings.AlwaysDownload || e.Key != 0 || forKey[e.Song.VideoID] {
 			download = append(download, e.Song.VideoID)
 		}
 	}

@@ -150,44 +150,74 @@ type tuner struct {
 	smooth  float64 // per-sample smoothing toward target
 	centre  float64 // DelayMs, in samples
 	mix     float64 // 0 is the dry voice, 1 the corrected one
+	notes   int     // the notes it may correct to (0: every semitone)
 	enabled bool
 }
 
 func newTuner() *tuner {
 	t := &tuner{det: newDetector(), line: newRing(4096), ratio: 1, target: 1, centre: DelayMs * Rate / 1000}
 	t.last = t.centre
-	t.setTune(0)
+	t.setTune(0, 0, 0)
 	return t
 }
 
-// setTune takes the singer's knob (0 to 100). Low values pull a little and slowly, so the
-// voice keeps its slides and vibrato; 100 snaps to the note at once, the robotic effect.
-func (t *tuner) setTune(tune float64) {
-	p := tuneParams(tune)
+// setTune sets how far notes are pulled (tune, 0..100: 0 is off, 100 all the way), how fast
+// (speed, 0..100: 100 snaps at once), and to which notes (a 12-bit mask of pitch classes, C
+// first; 0 is every semitone).
+func (t *tuner) setTune(tune, speed float64, notes int) {
+	p := tuneParams(tune, speed)
 	t.amount = p.amount
 	t.smooth = 1 - coefficient(p.seconds)
 	t.enabled = p.amount > 0
+	t.notes = notes & allNotes
 }
 
 type tunePlan struct{ amount, seconds float64 }
 
-// tuneParams is the knob's arithmetic, shared with the browser's copy (mic-core.js).
-func tuneParams(tune float64) tunePlan {
+// tuneParams is the knobs' arithmetic, shared with the browser's copy (mic-core.js): Tune
+// is how much of the way to the note, Speed how quickly the voice gets there. Slow keeps
+// slides and vibrato; fast flattens them, and at 100 the voice jumps from note to note.
+func tuneParams(tune, speed float64) tunePlan {
 	s := math.Max(0, math.Min(100, tune)) / 100
 	if s == 0 {
 		return tunePlan{}
 	}
-	return tunePlan{amount: math.Min(1, s/0.6), seconds: 0.3*(1-s)*(1-s) + 0.005}
+	v := math.Max(0, math.Min(100, speed)) / 100
+	return tunePlan{amount: s, seconds: 0.4*(1-v)*(1-v) + 0.005}
 }
 
-// noteFor picks the semitone to correct a pitch to, holding the current one until the
-// singer is clearly nearer another: without that, a note sung half way between two would
-// flip back and forth.
-func noteFor(midi, current float64) float64 {
-	if current > 0 && math.Abs(midi-current) < 0.65 {
+// allNotes is every semitone of the octave: bit 0 is C, bit 11 is B.
+const allNotes = 1<<12 - 1
+
+// allowed says whether a MIDI note is one of notes (0 allows every note).
+func allowed(note, notes int) bool {
+	return notes == 0 || notes&(1<<(((note%12)+12)%12)) != 0
+}
+
+// nearestNote is the allowed note nearest a pitch; a tie goes to the lower.
+func nearestNote(midi float64, notes int) float64 {
+	best, dist := math.Round(midi), math.Inf(1)
+	for n := int(math.Floor(midi)) - 6; n <= int(math.Ceil(midi))+6; n++ {
+		if d := math.Abs(midi - float64(n)); d < dist && allowed(n, notes) {
+			best, dist = float64(n), d
+		}
+	}
+	return best
+}
+
+// noteHold is how much nearer another note a singer must be before the tuner leaves the one
+// it holds: 0.3 semitone, so with every semitone allowed it moves at 65 cents.
+const noteHold = 0.3
+
+// noteFor picks the note to correct a pitch to, holding the current one until the singer is
+// clearly nearer another: without that, a note sung half way between two would flip back and
+// forth.
+func noteFor(midi, current float64, notes int) float64 {
+	best := nearestNote(midi, notes)
+	if current > 0 && allowed(int(current), notes) && math.Abs(midi-current) < math.Abs(midi-best)+noteHold {
 		return current
 	}
-	return math.Round(midi)
+	return best
 }
 
 func (t *tuner) process(x float64) float64 {
@@ -249,7 +279,7 @@ func (t *tuner) retarget() {
 	}
 	t.silent = 0
 	midi := 69 + 12*math.Log2(Rate/period/440)
-	t.note = noteFor(midi, t.note)
+	t.note = noteFor(midi, t.note, t.notes)
 	t.target = math.Pow(2, t.amount*(t.note-midi)/12)
 }
 

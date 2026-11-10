@@ -9,7 +9,8 @@ import { CDGView } from './tv-cdg.js';
 import { Finder } from './tv-search.js';
 import { PictureDelay } from './tv-delay.js';
 import { audioContext } from './audio.js';
-import { KNOBS, PRESETS, TUNE_DELAY_MS, latencyVerdict, normalize } from './mic-core.js';
+import { KNOBS, PRESETS, SCALES, TUNE_PRESETS, engineText, knobText, latencyVerdict, normalize, scaleLabel } from './mic-core.js';
+import { SongKeys, keysWanted, tuneNotes } from './tv-songkey.js';
 
 const $ = (sel) => document.querySelector(sel);
 const video = $('#video');
@@ -188,6 +189,7 @@ function onState(state) {
   lyricsPanel.sync(state);
   keyChanged(state.current);
   finder.update(state);
+  followSongKey();
 }
 
 function route() {
@@ -491,7 +493,7 @@ function status() {
       state = 'buffering';
     }
   }
-  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started, mic: mic.status(), lyrics: lyricsPanel.open };
+  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started, mic: { ...mic.status(), songKey: tuneNotes(mic.settings, tv.state, songKeys).name }, lyrics: lyricsPanel.open };
 }
 
 function report() {
@@ -547,8 +549,27 @@ function micUnsupported() {
   return mic.native ? '' : Mic.unsupported();
 }
 
-function knobText(k, v) {
-  return k === 'volume' ? `${v}%` : String(v);
+// --- Pitch correction to the song's own key -----------------------------------------
+const songKeys = new SongKeys({ onChange: () => syncNotes() });
+const TUNE_PRESET_ORDER = ['off', 'natural', 'strong', 'robot'];
+
+// followSongKey keeps the song's key known while pitch correction follows it.
+function followSongKey() {
+  const entries = keysWanted(mic.settings, tv.state);
+  if (entries) songKeys.follow(entries);
+  else songKeys.stop();
+  syncNotes();
+}
+
+// syncNotes gives pitch correction the notes of the song playing, in its key now.
+function syncNotes() {
+  const now = tuneNotes(mic.settings, tv.state, songKeys);
+  if (now.notes !== mic.settings.notes) {
+    mic.set({ notes: now.notes }); // which calls micChanged
+    return;
+  }
+  $('#mic-songkey').textContent = now.text;
+  reportSoon();
 }
 
 function micChanged() {
@@ -559,25 +580,27 @@ function micChanged() {
     $(`#mic-${k}`).value = s[k];
     $(`#mic-${k}-out`).textContent = knobText(k, s[k]);
   }
+  $('#mic-scale').value = s.scale;
+  const song = $('#mic-scale option[value="song"]');
+  if (song) song.disabled = !tv.state?.features?.keys && s.scale !== 'song';
+  for (const b of document.querySelectorAll('[data-tune-preset]')) {
+    const p = TUNE_PRESETS[b.dataset.tunePreset];
+    b.classList.toggle('on', s.tune === p.tune && (!p.tune || s.speed === p.speed));
+  }
+  $('#mic-songkey').textContent = tuneNotes(s, tv.state, songKeys).text;
   $('#mic-lowLatency-row').hidden = !(nativeMic.native && nativeMic.here);
   $('#mic-lowLatency').checked = s.lowLatency;
-  $('#mic-engine').textContent = micEngineText();
+  $('#mic-engine').textContent = engineText({ native: mic.native, engineMs: mic.engineMs, tune: s.tune, offered: nativeMic.native && nativeMic.here });
   $('#mic-button').classList.toggle('on', s.on);
   $('#mic-error').hidden = !mic.error;
   $('#mic-error').textContent = mic.error;
   if (mic.latencyMs !== null) $('#mic-latency').textContent = `Round trip ${latencyVerdict(mic.latencyMs)}`;
   reportSoon();
-}
-
-// micEngineText says where the voice is processed, and how late that makes it.
-function micEngineText() {
-  const tune = mic.settings.tune > 0 ? ` (${TUNE_DELAY_MS} ms of it is Tune)` : '';
-  if (mic.native) {
-    const ms = mic.engineMs ? `about ${Math.round(mic.engineMs)} ms` : 'a few ms';
-    return `Low latency: PipeWire on this computer adds ${ms}${tune}, plus the mic's and speakers' own.`;
+  const follow = `${s.scale}|${s.tune > 0}`;
+  if (follow !== tv.tuneFollows) {
+    tv.tuneFollows = follow;
+    followSongKey(); // the notes to pull to may have changed
   }
-  if (nativeMic.native && nativeMic.here) return 'In the browser: 60-70 ms late on Linux. Low latency cuts that to about 5.';
-  return `In the browser${tune}.`;
 }
 
 function micCommand(action, value) {
@@ -587,12 +610,17 @@ function micCommand(action, value) {
     'mic-toggle': { on: !s.on },
     'mic-volume': { volume: s.volume + value, on: true },
     'mic-preset': PRESETS[['dry', 'ktv', 'hall'][value]] || {},
+    'mic-tune-preset': TUNE_PRESETS[TUNE_PRESET_ORDER[value]],
+    // The phone's Notes button: every semitone, or the song's own key.
+    'mic-scale': { scale: s.scale === 'chromatic' && tv.state?.features?.keys ? 'song' : 'chromatic' },
   }[action] || (KNOBS[knob] && { [knob]: s[knob] + value });
   if (!changes) return;
   mic.set(changes).then(() => {
     const now = mic.settings;
     if (action === 'mic-toggle') osd(now.on ? 'Mic on' : 'Mic off');
-    else if (KNOBS[knob] && !['volume', 'echo', 'reverb'].includes(knob)) osd(`${KNOBS[knob].label} ${now[knob]}`);
+    else if (action === 'mic-tune-preset') osd(`Auto-tune: ${TUNE_PRESET_ORDER[value]}`);
+    else if (action === 'mic-scale') osd(`Auto-tune notes: ${scaleLabel(now.scale)}`);
+    else if (KNOBS[knob] && !['volume', 'echo', 'reverb'].includes(knob)) osd(`${KNOBS[knob].label} ${knobText(knob, now[knob])}`);
     else osd(`Mic ${now.volume}% · echo ${now.echo} · reverb ${now.reverb}`);
   });
 }
@@ -648,6 +676,9 @@ async function initMicPanel() {
   };
   $('#mic-device').onchange = (e) => mic.set({ [mic.deviceKey || 'deviceId']: e.target.value, on: true }).then(fillDevices);
   for (const b of document.querySelectorAll('[data-preset]')) b.onclick = () => mic.set(PRESETS[b.dataset.preset]);
+  for (const b of document.querySelectorAll('[data-tune-preset]')) b.onclick = () => mic.set(TUNE_PRESETS[b.dataset.tunePreset]);
+  $('#mic-scale').replaceChildren(...SCALES.map((scale) => new Option(scaleLabel(scale), scale)));
+  $('#mic-scale').onchange = (e) => mic.set({ scale: e.target.value });
   $('#mic-measure').onclick = async () => {
     $('#mic-measure').disabled = true;
     $('#mic-latency').textContent = 'Listening for three clicks…';

@@ -24,6 +24,7 @@ import (
 	"github.com/vantuan5644/karaoke/internal/library"
 	"github.com/vantuan5644/karaoke/internal/lyrics"
 	"github.com/vantuan5644/karaoke/internal/media"
+	"github.com/vantuan5644/karaoke/internal/musickey"
 	"github.com/vantuan5644/karaoke/internal/room"
 	"github.com/vantuan5644/karaoke/internal/server"
 	"github.com/vantuan5644/karaoke/internal/voice"
@@ -143,6 +144,11 @@ func run(o options) error {
 	if engine := newVoice(o); engine != nil {
 		cfg.Voice = engine
 		defer engine.Close()
+	}
+	if ffmpeg, err := exec.LookPath("ffmpeg"); err == nil {
+		cfg.Keys = &musickey.Finder{FFmpeg: ffmpeg} // pitch correction to the song's own key
+	} else {
+		log.Printf("keys: ffmpeg not found, so pitch correction can't follow a song's key")
 	}
 
 	listener, err := net.Listen("tcp", o.listen)

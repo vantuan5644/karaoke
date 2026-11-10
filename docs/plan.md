@@ -139,14 +139,43 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    drifting 2.5 to 3 ms at 0.31 and 0.47 Hz, one per side) and Tune, pitch correction: YIN at
    16 kHz every 5 ms (70 to 800 Hz, threshold 0.15), then TD-PSOLA with Hann grains two periods
    long, read 8 ms behind the voice and lined up a whole period apart, so the voice keeps its
-   formants. The knob sets how much of the way to the nearest semitone (all of it from 60)
-   and how fast (0.2 s at 20, 5 ms at 100); a note is held until the singer is 0.65 semitone
-   from it. It is in Go for the native mic and in an AudioWorklet (`tune-worklet.js`) for the
+   formants. At first one knob set both how much of the way to the nearest semitone (all of
+   it from 60) and how fast (0.2 s at 20, 5 ms at 100); item 7 split it. A note is held until
+   the singer is 0.65 semitone from it. It is in Go for the native mic and in an AudioWorklet (`tune-worklet.js`) for the
    browser, with the same tests: 452 Hz and 430 Hz come out within 4 cents of 440 at 100, 200
    Hz goes to 196, the level stays within 1 dB, and noise passes through only delayed. The
    Go chain matches the browser's loudness: Chrome's compressor adds makeup gain (0.6 of
    what it takes off at full scale, 9.6 dB here), so the Go one does too, and both feedback
    guards now listen before the compressor, which held a howl under their level threshold.
+7. **Controllable auto-tune and a mic boost** (done). Mic boost is 0 to 24 dB of gain before
+   the high-pass, so the meter, the feedback guard and the compressor all see the raised level
+   (Mic volume comes after the compressor, so it only makes the voice louder going out).
+   Tune split into Tune, how much of the way (amount = tune/100), and Speed, how fast (the
+   glide takes 0.4·(1 − speed/100)² + 0.005 s: 0.4 s at 0, 0.1 s at 50, 5 ms at 100), with
+   presets Natural (70, 35), Strong (100, 65) and Robot (100, 100). Notes is a 12-bit mask
+   of the notes allowed, C first, 0 for all; the tuner pulls to the nearest allowed note and
+   holds the one it is on until another allowed note is 0.3 semitone nearer. The mask is
+   every semitone, a major key picked by hand (its relative minor has the same notes), or
+   the song's key, and the TV moves it with the song's key change.
+   The song's key is heard on the server (`internal/musickey`, `GET /api/songkey`): ffmpeg
+   decodes the first 6 minutes to mono at 11025 Hz, 8192-sample Hann frames every 4096 are
+   gathered into semitones from A1 to A7, each note's 3rd, 5th and 6th harmonics (0.5, 0.3
+   and 0.25 of it) are taken back out of the notes they land on, low notes first, and the
+   frames' chroma (A1 to A6, each frame normalised) is correlated with the 24
+   Krumhansl–Kessler profiles. The notes are the key's scale (natural minor for a minor key)
+   plus any other note at least half as strong as the scale's average, both above the song's
+   quietest note. On 8 karaoke tracks of known key (Sing King's Let It Be, Someone Like You,
+   Perfect, Rolling in the Deep, Hello, All of Me, Shallow, Let Her Go) all 8 came out right
+   with 7 notes each, Hello and All of Me as their relative keys, which are the same notes;
+   it takes 180 to 260 ms a song. Without the harmonic step, Shallow and Rolling in the Deep
+   were heard a fifth off (the third harmonic of every note sounds a fifth up), and the first
+   extras rule, which measured from zero rather than the floor, let 9 to 12 notes through on
+   some songs.
+   Bohemian Rhapsody, which changes key, came out E♭ major: a whole-song key is a limit, so
+   such a song is best sung with every semitone. A YouTube song is downloaded to be heard
+   (the TV asks about the song playing and the next one, so the next is ready when it
+   starts); a song already playing embedded keeps playing embedded. Keys are cached per file
+   (path, size, modification time), and one song is heard at a time.
 
 ## Lyrics panel (done)
 

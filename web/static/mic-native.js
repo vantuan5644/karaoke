@@ -128,6 +128,7 @@ export class NativeMic {
     return {
       on: s.on, volume: s.volume, echo: s.echo, reverb: s.reverb,
       warmth: s.warmth, bright: s.bright, double: s.double, tune: s.tune,
+      boost: s.boost, speed: s.speed, scale: s.scale,
       engine: 'native',
       device: this.device,
       latencyMs: this.latencyMs ?? 0,

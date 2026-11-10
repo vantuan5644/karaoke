@@ -115,7 +115,7 @@ body.hide-cursor .mic-button:not(.on) { opacity: 0; }
 .mic-panel output { float: right; color: var(--text); font-variant-numeric: tabular-nums; }
 .mic-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: .3em; }
 .mic-panel select {
-  width: 100%; margin-top: .3em; padding: .4em; border-radius: .5em;
+  width: 100%; margin-top: .3em; padding: .4em; border-radius: .5em; font: inherit;
   background: var(--bg); color: var(--text); border: 1px solid var(--line);
 }
 .meter-row { margin-top: .8em; }
@@ -126,6 +126,8 @@ body.hide-cursor .mic-button:not(.on) { opacity: 0; }
 .level { height: .5em; background: var(--line); border-radius: 1em; overflow: hidden; }
 .level i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ok), var(--warn) 75%, var(--err)); }
 .presets { display: flex; gap: .5em; margin-top: 1em; }
+.presets button.on { background: var(--accent); color: var(--accent-text, #fff); border-color: var(--accent); }
+.mic-panel .tune-presets { margin-top: .6em; }
 .presets button, .latency button {
   flex: 1; padding: .5em; border-radius: .6em; border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
 }

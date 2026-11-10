@@ -2,10 +2,13 @@
 // they can be tested without a browser.
 
 export const DEFAULTS = Object.freeze({
-  on: false, volume: 100, echo: 35, reverb: 25,
+  on: false, boost: 0, volume: 100, echo: 35, reverb: 25,
   // Voice tuning, all off to start: warmth (low-mid body), bright (presence and air),
   // double (a second voice beside the first) and tune (pitch correction).
   warmth: 0, bright: 0, double: 0, tune: 0,
+  speed: 50, // how fast pitch correction pulls a note
+  scale: 'chromatic', // which notes it pulls to (SCALES)
+  notes: 0, // those notes for the song now playing, as 12 bits, C first; 0 is every semitone
   deviceId: '', // the browser's mic
   nativeDevice: '', // the server's PipeWire mic, by node name
   lowLatency: true, // use the server's PipeWire mic when this page is on its computer
@@ -13,6 +16,7 @@ export const DEFAULTS = Object.freeze({
 
 // The knobs a singer turns, with their ranges, in the order the panels show them.
 export const KNOBS = Object.freeze({
+  boost: { label: 'Mic boost', max: 24, step: 1 }, // dB, going in
   volume: { label: 'Mic volume', max: 200, step: 5 },
   echo: { label: 'Echo', max: 100, step: 5 },
   reverb: { label: 'Reverb', max: 100, step: 5 },
@@ -20,7 +24,58 @@ export const KNOBS = Object.freeze({
   bright: { label: 'Bright', max: 100, step: 5 },
   double: { label: 'Double', max: 100, step: 5 },
   tune: { label: 'Tune', max: 100, step: 5 },
+  speed: { label: 'Tune speed', max: 100, step: 5 },
 });
+
+// Pitch correction set up for a sound, from barely there to the robot.
+export const TUNE_PRESETS = Object.freeze({
+  off: { tune: 0 },
+  natural: { tune: 70, speed: 35 },
+  strong: { tune: 100, speed: 65 },
+  robot: { tune: 100, speed: 100 },
+});
+
+// --- Which notes pitch correction pulls to ----------------------------------------------
+
+export const ALL_NOTES = 0xfff; // every semitone: bit 0 is C, bit 11 is B
+const MAJOR_NAMES = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+const MINOR_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'B♭', 'B'];
+
+// SCALES are the choices: every semitone, the song's own key (which the server works out
+// from its sound), or a key picked by hand (a major key, the same notes as its minor).
+export const SCALES = Object.freeze(['chromatic', 'song', ...MAJOR_NAMES.map((_, i) => `key-${i}`)]);
+
+export function scaleLabel(scale) {
+  if (scale === 'song') return "The song's key";
+  const m = /^key-(\d+)$/.exec(scale);
+  if (m) return `${MAJOR_NAMES[m[1]]} major / ${MINOR_NAMES[(Number(m[1]) + 9) % 12]} minor`;
+  return 'Every semitone';
+}
+
+// keyName names a key: tonic 0..11 (C first), major or minor.
+export function keyName(tonic, minor) {
+  return minor ? `${MINOR_NAMES[tonic]} minor` : `${MAJOR_NAMES[tonic]} major`;
+}
+
+// majorNotes is a major key's seven notes, as 12 bits.
+export function majorNotes(tonic) {
+  return [0, 2, 4, 5, 7, 9, 11].reduce((m, i) => m | (1 << ((tonic + i) % 12)), 0);
+}
+
+// shiftNotes moves a set of notes up by semitones (a key change); 0 stays every semitone.
+export function shiftNotes(notes, semitones) {
+  const s = ((Math.round(semitones) % 12) + 12) % 12;
+  return ((notes << s) | (notes >> (12 - s))) & ALL_NOTES;
+}
+
+// notesFor is the notes to pull to: for a scale choice, the song's key as the server found
+// it ({ notes }, or null while unknown), and the song's key change in semitones. A key
+// picked by hand is the song's key as written, so it moves with a key change too.
+export function notesFor(scale, songKey, shift = 0) {
+  if (scale === 'song') return songKey?.notes ? shiftNotes(songKey.notes, shift) : 0;
+  const m = /^key-(\d+)$/.exec(scale);
+  return m ? shiftNotes(majorNotes(Number(m[1])), shift) : 0;
+}
 
 // Presets a singer can pick from without knowing what a compressor is.
 export const PRESETS = Object.freeze({
@@ -35,6 +90,8 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : 
 export function normalize(s = {}) {
   const out = { on: Boolean(s.on) };
   for (const [k, { max }] of Object.entries(KNOBS)) out[k] = Math.round(clamp(s[k] ?? DEFAULTS[k], 0, max));
+  out.scale = SCALES.includes(s.scale) ? s.scale : DEFAULTS.scale;
+  out.notes = Math.round(clamp(s.notes ?? 0, 0, ALL_NOTES));
   out.deviceId = typeof s.deviceId === 'string' ? s.deviceId : '';
   out.nativeDevice = typeof s.nativeDevice === 'string' ? s.nativeDevice : '';
   out.lowLatency = s.lowLatency === undefined ? DEFAULTS.lowLatency : Boolean(s.lowLatency);
@@ -47,6 +104,7 @@ export function normalize(s = {}) {
 export function params(s) {
   const n = normalize(s);
   return {
+    boostGain: 10 ** (n.boost / 20),
     micGain: n.volume / 100,
     echoSend: (n.echo / 100) * 0.7,
     echoFeedback: 0.12 + (n.echo / 100) * 0.33,
@@ -56,20 +114,42 @@ export function params(s) {
     brightDb: (n.bright / 100) * CHAIN.brightMaxDb,
     doubleMix: (n.double / 100) * 0.7,
     tune: n.tune,
+    speed: n.speed,
+    notes: n.notes,
   };
 }
 
-// tunePlan is the Tune knob's arithmetic (the same as the Go engine's tuneParams): how much
-// of the way to the nearest note to pull (0..1), and how quickly. Low settings pull a little
-// and slowly, keeping slides and vibrato; 100 snaps at once, the robotic effect.
-export function tunePlan(tune) {
+// tunePlan is the pitch correction knobs' arithmetic (the same as the Go engine's
+// tuneParams): how much of the way to the note to pull (Tune, 0..1), how quickly (Speed:
+// slow keeps slides and vibrato, 100 snaps at once, the robotic effect), and to which notes.
+export function tunePlan(tune, speed = DEFAULTS.speed, notes = 0) {
   const s = clamp(tune, 0, 100) / 100;
-  if (s === 0) return { amount: 0, seconds: 0 };
-  return { amount: Math.min(1, s / 0.6), seconds: 0.3 * (1 - s) * (1 - s) + 0.005 };
+  if (s === 0) return { amount: 0, seconds: 0, notes };
+  const v = clamp(speed, 0, 100) / 100;
+  return { amount: s, seconds: 0.4 * (1 - v) * (1 - v) + 0.005, notes };
 }
 
 // TUNE_DELAY_MS is what pitch correction adds while it is on (the Go engine's DelayMs).
 export const TUNE_DELAY_MS = 8;
+
+// knobText is a knob's value as the panels show it.
+export function knobText(knob, v) {
+  if (knob === 'volume') return `${v}%`;
+  if (knob === 'boost') return v ? `+${v} dB` : '0 dB';
+  return String(v);
+}
+
+// engineText says where the voice is processed, and how late that makes it: native is the
+// server's PipeWire mic (engineMs is what it says it adds), offered says this page could have it.
+export function engineText({ native, engineMs, tune, offered }) {
+  const tuned = tune > 0 ? ` (${TUNE_DELAY_MS} ms of it is Tune)` : '';
+  if (native) {
+    const ms = engineMs ? `about ${Math.round(engineMs)} ms` : 'a few ms';
+    return `Low latency: PipeWire on this computer adds ${ms}${tuned}, plus the mic's and speakers' own.`;
+  }
+  if (offered) return 'In the browser: 60-70 ms late on Linux. Low latency cuts that to about 5.';
+  return `In the browser${tuned}.`;
+}
 
 // The fixed part of the chain: a live vocal chain in the usual order.
 export const CHAIN = Object.freeze({

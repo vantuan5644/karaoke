@@ -40,6 +40,7 @@ type Config struct {
 	Lyrics     LyricsSource  // nil when lyrics are off
 	Library    Library       // nil without -library
 	Voice      Voice         // nil without PipeWire, or with -native-mic=false
+	Keys       KeyFinder     // nil without ffmpeg
 	MicIdle    time.Duration // how long an unattended mic stays on (tests); 0 is micIdle
 	Web        fs.FS         // index.html, tv.html and static/
 	URLs       []string      // addresses phones can reach this server at, best first
@@ -61,8 +62,9 @@ type Server struct {
 	status   PlayerStatus
 	statusAt time.Time
 	micTimer *time.Timer
-	micLast  time.Time  // when the TV page last asked about the mic
-	micMu    sync.Mutex // a change to the mic, against the auto-off
+	keyWant  map[string]bool // videos downloading so their keys can be heard (songkey.go)
+	micLast  time.Time       // when the TV page last asked about the mic
+	micMu    sync.Mutex      // a change to the mic, against the auto-off
 }
 
 // New returns a Server and hooks it to the room's changes.
@@ -84,7 +86,7 @@ func (s *Server) roomChanged() {
 	s.publishing.Lock()
 	defer s.publishing.Unlock()
 	if s.cfg.Downloader != nil {
-		s.cfg.Downloader.Want(wanted(s.cfg.Room.State()))
+		s.cfg.Downloader.Want(wanted(s.cfg.Room.State(), s.keyWanted()))
 	}
 	s.publishState()
 }
@@ -130,6 +132,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/mic", s.setMic)
 	mux.HandleFunc("GET /api/mic/devices", s.micDevices)
 	mux.HandleFunc("POST /api/mic/measure", s.measureMic)
+	mux.HandleFunc("GET /api/songkey", s.songKey)
 
 	mux.HandleFunc("GET /media/yt/{id}", s.youtubeFile)
 	mux.HandleFunc("GET /media/lib/{id}", s.libraryFile)

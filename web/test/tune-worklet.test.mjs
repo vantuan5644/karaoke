@@ -9,7 +9,7 @@ import { tunePlan } from '../static/mic-core.js';
 const source = readFileSync(new URL('../static/tune-worklet.js', import.meta.url), 'utf8');
 const RATE = 48000;
 
-function processor(tune) {
+function processor(tune, speed = 100, notes = 0) {
   let Processor;
   const sandbox = {
     sampleRate: RATE,
@@ -19,7 +19,7 @@ function processor(tune) {
   };
   vm.runInNewContext(source, sandbox);
   const p = new Processor();
-  p.port.onmessage({ data: { plan: tunePlan(tune) } });
+  p.port.onmessage({ data: { plan: tunePlan(tune, speed, notes) } });
   return p;
 }
 
@@ -64,16 +64,23 @@ test('tune 0 passes the voice straight through', () => {
   assert.deepEqual(y, x);
 });
 
-test('tune moves a note to the nearest semitone', () => {
-  for (const { hz, want, tune } of [
+const C_MAJOR = 2741;
+
+test('tune moves a note to the nearest allowed note', () => {
+  for (const { hz, want, tune, speed = 100, notes = 0 } of [
     { hz: 452.1, want: 440, tune: 100 },
     { hz: 430, want: 440, tune: 100 },
     { hz: 200, want: 196, tune: 100 },
-    { hz: 452.1, want: 440 * 2 ** ((0.47 * (1 - 0.5 / 0.6)) / 12), tune: 50 },
+    { hz: 452.1, want: 440 * 2 ** ((0.47 * 0.5) / 12), tune: 50 }, // half way
+    { hz: 452.1, want: 440, tune: 100, speed: 70 },
+    { hz: 375, want: 370, tune: 100 }, // F#4 + 24 cents: every semitone
+    { hz: 375, want: 392, tune: 100, notes: C_MAJOR }, // in C major, F# is no note: G
+    { hz: 440, want: 440, tune: 100, notes: C_MAJOR },
   ]) {
-    const p = processor(tune);
+    const p = processor(tune, speed, notes);
     const got = pitchOf(p, run(p, saw(hz, RATE / 2)));
-    assert.ok(Math.abs(cents(got, want)) < 4, `${hz} Hz at tune ${tune}: ${got.toFixed(1)} Hz, want ${want.toFixed(1)}`);
+    assert.ok(Math.abs(cents(got, want)) < 4,
+      `${hz} Hz at tune ${tune} speed ${speed} notes ${notes}: ${got.toFixed(1)} Hz, want ${want.toFixed(1)}`);
   }
 });
 

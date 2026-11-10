@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0b17">
+  <title>Karaoke</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/base.css">
+  <link rel="stylesheet" href="/static/remote.css">
+  <script type="module" src="/static/remote.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-label="Karaoke home"><img src="/static/icon.svg" alt=""><span>Karaoke</span></a>
+    <button id="singer" class="chip" type="button" title="Change who is singing">Your name</button>
+    <button id="open-settings" class="iconbtn" type="button" aria-label="Settings"></button>
+  </header>
+
+  <section id="now" class="now" aria-live="polite"></section>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="search" aria-selected="true">Search</button>
+    <button type="button" role="tab" data-tab="queue" aria-selected="false">Queue <span id="queue-count" class="count"></span></button>
+    <button type="button" role="tab" data-tab="history" aria-selected="false">Sung</button>
+  </nav>
+
+  <main>
+    <section id="tab-search" role="tabpanel">
+      <form id="search-form" class="searchbar" role="search">
+        <input id="q" type="search" placeholder="Song or artist" autocomplete="off" enterkeyhint="search" aria-label="Song or artist">
+        <button type="submit" class="primary">Search</button>
+      </form>
+      <label class="switch"><input type="checkbox" id="karaoke-only" checked><span></span>Karaoke versions only</label>
+      <p id="search-hint" class="hint">Type a song name. "karaoke" is added for you, so sing-along versions come first.</p>
+      <ul id="results" class="list"></ul>
+      <button id="more" class="ghost wide" type="button" hidden>More results</button>
+    </section>
+
+    <section id="tab-queue" role="tabpanel" hidden>
+      <ul id="queue" class="list"></ul>
+      <p id="queue-empty" class="hint">Nothing queued after this song.</p>
+      <button id="clear" class="ghost wide danger" type="button" hidden>Clear the queue</button>
+    </section>
+
+    <section id="tab-history" role="tabpanel" hidden>
+      <ul id="history" class="list"></ul>
+      <p id="history-empty" class="hint">Songs sung tonight show up here.</p>
+    </section>
+  </main>
+
+  <dialog id="name-dialog">
+    <form method="dialog" id="name-form">
+      <h2>Who's singing?</h2>
+      <p class="hint">Your name shows on the TV when it's your turn.</p>
+      <input id="name-input" maxlength="40" autocomplete="nickname" placeholder="Your name" required>
+      <div class="row end">
+        <button value="cancel" class="ghost" type="button" id="name-cancel">Cancel</button>
+        <button value="ok" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <h2>Settings</h2>
+      <label class="switch"><input type="checkbox" id="always-download"><span></span>Download every song</label>
+      <p class="hint" id="always-download-hint">Plays from a copy on the server: no YouTube ads, but each song waits for its download.</p>
+      <label class="field">Seconds of "up next" between songs
+        <input id="upnext" type="number" min="2" max="30" step="1">
+      </label>
+      <p class="hint"><a href="/tv" target="_blank" rel="noopener">Open the TV page</a> on the computer connected to the TV.</p>
+      <p class="hint" id="version"></p>
+      <div class="row end">
+        <button value="cancel" class="ghost" type="button" id="settings-cancel">Close</button>
+        <button value="ok" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

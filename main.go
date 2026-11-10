@@ -1,0 +1,217 @@
+// Karaoke is a self-hosted karaoke server: phones search YouTube and queue songs, a TV or
+// PC browser plays them. One binary, no database, no API key.
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"github.com/vantuan5644/karaoke/internal/media"
+	"github.com/vantuan5644/karaoke/internal/room"
+	"github.com/vantuan5644/karaoke/internal/server"
+	"github.com/vantuan5644/karaoke/internal/youtube"
+	"github.com/vantuan5644/karaoke/web"
+)
+
+var version = "dev" // set by the release build
+
+type options struct {
+	listen    string
+	dataDir   string
+	cacheDir  string
+	cacheGB   float64
+	ytdlp     string
+	ytdlpArgs string
+	maxHeight int
+	region    string
+	publicURL string
+	tlsCert   string
+	tlsKey    string
+	open      bool
+}
+
+func main() {
+	opts := parseFlags()
+	if err := run(opts); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func parseFlags() options {
+	var o options
+	flag.StringVar(&o.listen, "listen", ":8765", "address to listen on; :8765 lets phones on the network join")
+	flag.StringVar(&o.dataDir, "data", defaultDir(os.UserConfigDir), "folder for the queue and settings")
+	flag.StringVar(&o.cacheDir, "cache", defaultDir(os.UserCacheDir), "folder for downloaded videos")
+	flag.Float64Var(&o.cacheGB, "cache-gb", 20, "largest the download cache grows, in GB (0: no limit)")
+	flag.StringVar(&o.ytdlp, "ytdlp", "yt-dlp", `yt-dlp to download videos that refuse to embed; "off" to play embedded videos only`)
+	flag.StringVar(&o.ytdlpArgs, "ytdlp-args", "", "extra yt-dlp arguments, space-separated (e.g. --cookies-from-browser firefox)")
+	flag.IntVar(&o.maxHeight, "max-height", 720, "tallest video to download, in pixels")
+	flag.StringVar(&o.region, "region", "", "two-letter region for YouTube search, e.g. US or VN (default: YouTube guesses)")
+	flag.StringVar(&o.publicURL, "public-url", "", "the address the TV's QR code shows, if not this machine's LAN address")
+	flag.StringVar(&o.tlsCert, "tls-cert", "", "serve HTTPS with this certificate (the TV page needs HTTPS for a mic, unless it is on localhost)")
+	flag.StringVar(&o.tlsKey, "tls-key", "", "the key for -tls-cert")
+	flag.BoolVar(&o.open, "open", false, "open the TV page in the default browser once the server is up")
+	showVersion := flag.Bool("version", false, "print the version and exit")
+	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+	return o
+}
+
+func defaultDir(base func() (string, error)) string {
+	dir, err := base()
+	if err != nil {
+		dir = "."
+	}
+	return filepath.Join(dir, "karaoke")
+}
+
+func run(o options) error {
+	if (o.tlsCert == "") != (o.tlsKey == "") {
+		return errors.New("-tls-cert and -tls-key go together")
+	}
+	if err := os.MkdirAll(o.dataDir, 0o755); err != nil {
+		return err
+	}
+	rm, err := room.OpenRoom(filepath.Join(o.dataDir, "state.json"))
+	if err != nil {
+		return fmt.Errorf("opening the saved queue: %w", err)
+	}
+	yt := youtube.New()
+	yt.Region = strings.ToUpper(o.region)
+
+	cfg := server.Config{Room: rm, YouTube: yt, Web: web.Files, Version: version}
+	// Downloads can report progress before the server exists, from their own goroutines.
+	var live atomic.Pointer[server.Server]
+	dl, err := newDownloader(o, func() {
+		if srv := live.Load(); srv != nil {
+			srv.DownloadChanged()
+		}
+	})
+	if err != nil {
+		return err
+	}
+	if dl != nil {
+		cfg.Downloader = dl
+		defer dl.Close()
+	}
+
+	listener, err := net.Listen("tcp", o.listen)
+	if err != nil {
+		return err
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	secure := o.tlsCert != ""
+	cfg.URLs = append(publicURLs(o.publicURL), server.LocalURLs(port, secure)...)
+	srv := server.New(cfg)
+	live.Store(srv)
+
+	httpServer := &http.Server{
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		// No write timeout: the event stream and video files are long-lived on purpose.
+	}
+	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	go func() {
+		<-stop.Done()
+		shutdown, done := context.WithTimeout(context.Background(), 5*time.Second)
+		defer done()
+		httpServer.Shutdown(shutdown)
+	}()
+
+	scheme := "http"
+	if secure {
+		scheme = "https"
+	}
+	local := fmt.Sprintf("%s://localhost:%d", scheme, port)
+	log.Printf("karaoke %s: TV page %s/tv", version, local)
+	for _, u := range cfg.URLs {
+		log.Printf("phones: %s", u)
+	}
+	if o.open {
+		go openBrowser(local + "/tv")
+	}
+	if secure {
+		err = httpServer.ServeTLS(listener, o.tlsCert, o.tlsKey)
+	} else {
+		err = httpServer.Serve(listener)
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func publicURLs(u string) []string {
+	if u = strings.TrimRight(strings.TrimSpace(u), "/"); u != "" {
+		return []string{u}
+	}
+	return nil
+}
+
+// newDownloader finds yt-dlp and hands it a JavaScript runtime, which YouTube's player now
+// needs solved: yt-dlp looks for deno itself, so only node has to be named.
+func newDownloader(o options, onChange func()) (*media.Downloader, error) {
+	if o.ytdlp == "off" || o.ytdlp == "" {
+		log.Printf("yt-dlp off: only videos that embed will play")
+		return nil, nil
+	}
+	bin, err := exec.LookPath(o.ytdlp)
+	if err != nil {
+		log.Printf("yt-dlp not found (%v): only videos that embed will play; install yt-dlp to play the rest", err)
+		return nil, nil
+	}
+	args := strings.Fields(o.ytdlpArgs)
+	if !strings.Contains(o.ytdlpArgs, "--js-runtimes") {
+		if _, err := exec.LookPath("deno"); err != nil {
+			if node, err := exec.LookPath("node"); err == nil {
+				args = append(args, "--js-runtimes", "node:"+node)
+			} else {
+				log.Printf("neither deno nor node found: yt-dlp may fail on YouTube; install deno")
+			}
+		}
+	}
+	dl, err := media.New(media.Config{
+		Bin: bin, Args: args, Dir: filepath.Join(o.cacheDir, "youtube"),
+		MaxBytes: int64(o.cacheGB * (1 << 30)), MaxHeight: o.maxHeight, OnChange: onChange, Logf: log.Printf,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("download cache: %w", err)
+	}
+	log.Printf("yt-dlp: %s (cache %s)", bin, filepath.Join(o.cacheDir, "youtube"))
+	return dl, nil
+}
+
+func openBrowser(url string) {
+	time.Sleep(300 * time.Millisecond)
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("open a browser at %s (%v)", url, err)
+	}
+}

@@ -1,0 +1,7 @@
+/karaoke
+/karaoke.exe
+/dist/
+/node_modules/
+*.test
+*.out
+.DS_Store

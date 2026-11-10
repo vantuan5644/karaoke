@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <title>Karaoke TV</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/base.css">
+  <link rel="stylesheet" href="/static/tv.css">
+  <script type="module" src="/static/tv.js"></script>
+</head>
+<body class="phase-idle">
+  <div id="stage">
+    <div id="yt-wrap"><div id="yt"></div></div>
+    <video id="video" playsinline preload="auto"></video>
+  </div>
+
+  <section id="idle" class="screen">
+    <div class="splash">
+      <img class="logo" src="/static/icon.svg" alt="">
+      <h1>Karaoke</h1>
+      <p class="lead">Scan to pick a song</p>
+      <img class="qr big" alt="QR code to open the song picker">
+      <p class="join"></p>
+    </div>
+  </section>
+
+  <section id="upnext" class="screen">
+    <div class="card">
+      <p class="eyebrow">Up next</p>
+      <h1 class="who"></h1>
+      <p class="song"></p>
+      <div class="countdown"><span></span></div>
+    </div>
+    <div class="corner"><img class="qr small" alt=""><p class="join"></p></div>
+  </section>
+
+  <section id="wait" class="screen">
+    <div class="card">
+      <p class="eyebrow">Getting the song ready</p>
+      <h1 class="song"></h1>
+      <div class="meter"><i></i></div>
+      <p class="detail"></p>
+    </div>
+  </section>
+
+  <section id="error" class="screen">
+    <div class="card">
+      <p class="eyebrow">Skipping</p>
+      <h1 class="song"></h1>
+      <p class="detail"></p>
+    </div>
+  </section>
+
+  <div id="banner" class="banner"><span class="who"></span><span class="song"></span></div>
+  <div id="nextbar" class="nextbar"></div>
+  <div id="osd" class="osd"></div>
+
+  <section id="start" class="start">
+    <button id="start-button" type="button">
+      <span class="big">Start</span>
+      <span>Click or press Enter: browsers only play sound after a click</span>
+    </button>
+    <p class="keys">Space pause · ← → seek · ↑ ↓ volume · N skip · F full screen</p>
+  </section>
+</body>
+</html>

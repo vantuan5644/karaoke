@@ -1,0 +1,455 @@
+{
+ "contents": {
+  "twoColumnSearchResultsRenderer": {
+   "primaryContents": {
+    "sectionListRenderer": {
+     "contents": [
+      {
+       "itemSectionRenderer": {
+        "contents": [
+         {
+          "videoRenderer": {
+           "videoId": "9Lxm0iSnKNc",
+           "title": {
+            "runs": [
+             {
+              "text": "Queen - Bohemian Rhapsody (Karaoke Version)"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Queen - Bohemian Rhapsody (Karaoke Version) 6 minutes, 15 seconds"
+             }
+            }
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Sing King",
+              "navigationEndpoint": {
+               "clickTrackingParams": "COcBENwwGAAiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@singkingkaraoke",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCwTRjvjVge51X-ILJ4i22ew",
+                "canonicalBaseUrl": "/@singkingkaraoke"
+               }
+              }
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "Sing King",
+              "navigationEndpoint": {
+               "clickTrackingParams": "COcBENwwGAAiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@singkingkaraoke",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCwTRjvjVge51X-ILJ4i22ew",
+                "canonicalBaseUrl": "/@singkingkaraoke"
+               }
+              }
+             }
+            ]
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "6 minutes, 15 seconds"
+             }
+            },
+            "simpleText": "6:15"
+           },
+           "viewCountText": {
+            "simpleText": "57,219,130 views"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "57 million views"
+             }
+            },
+            "simpleText": "57M views"
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "xyF04rAhHaQ",
+           "title": {
+            "runs": [
+             {
+              "text": "Queen - Bohemian Rhapsody (Karaoke)"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Queen - Bohemian Rhapsody (Karaoke) 5 minutes, 46 seconds"
+             }
+            }
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Starlight Karaoke",
+              "navigationEndpoint": {
+               "clickTrackingParams": "COEBENwwGAEiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@starlightkaraoke",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCoX3sO3zjS3panS-GiVHS9w",
+                "canonicalBaseUrl": "/@starlightkaraoke"
+               }
+              }
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "Starlight Karaoke",
+              "navigationEndpoint": {
+               "clickTrackingParams": "COEBENwwGAEiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@starlightkaraoke",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCoX3sO3zjS3panS-GiVHS9w",
+                "canonicalBaseUrl": "/@starlightkaraoke"
+               }
+              }
+             }
+            ]
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "5 minutes, 46 seconds"
+             }
+            },
+            "simpleText": "5:46"
+           },
+           "viewCountText": {
+            "simpleText": "5,406,098 views"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "5.4 million views"
+             }
+            },
+            "simpleText": "5.4M views"
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "watimPzF6JY",
+           "title": {
+            "runs": [
+             {
+              "text": "Queen - Bohemian Rhapsody (Piano Karaoke)"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Queen - Bohemian Rhapsody (Piano Karaoke) 5 minutes, 52 seconds"
+             }
+            }
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Sing2Piano | Piano Karaoke Instrumentals",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CNIBENwwGAIiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/channel/UCIk6z4gxI5ADYK7HmNiJvNg",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCIk6z4gxI5ADYK7HmNiJvNg",
+                "canonicalBaseUrl": "/channel/UCIk6z4gxI5ADYK7HmNiJvNg"
+               }
+              }
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "Sing2Piano | Piano Karaoke Instrumentals",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CNIBENwwGAIiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/channel/UCIk6z4gxI5ADYK7HmNiJvNg",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCIk6z4gxI5ADYK7HmNiJvNg",
+                "canonicalBaseUrl": "/channel/UCIk6z4gxI5ADYK7HmNiJvNg"
+               }
+              }
+             }
+            ]
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "5 minutes, 52 seconds"
+             }
+            },
+            "simpleText": "5:52"
+           },
+           "viewCountText": {
+            "simpleText": "4,819,833 views"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "4.8 million views"
+             }
+            },
+            "simpleText": "4.8M views"
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "20JSZ4u6Gy4",
+           "title": {
+            "runs": [
+             {
+              "text": "Bohemian Rhapsody (Instrumental Karaoke) | With Backing Vocals"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Bohemian Rhapsody (Instrumental Karaoke) | With Backing Vocals 6 minutes, 8 seconds"
+             }
+            }
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "My Karaoke",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CMwBENwwGAMiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@MyKaraoke101",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCmgwMd96Y4MzkuVM6vjokbA",
+                "canonicalBaseUrl": "/@MyKaraoke101"
+               }
+              }
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "My Karaoke",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CMwBENwwGAMiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@MyKaraoke101",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCmgwMd96Y4MzkuVM6vjokbA",
+                "canonicalBaseUrl": "/@MyKaraoke101"
+               }
+              }
+             }
+            ]
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "6 minutes, 8 seconds"
+             }
+            },
+            "simpleText": "6:08"
+           },
+           "viewCountText": {
+            "simpleText": "210,523 views"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "210 thousand views"
+             }
+            },
+            "simpleText": "210K views"
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "LIVEstream1",
+           "title": {
+            "runs": [
+             {
+              "text": "24/7 karaoke radio"
+             }
+            ]
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Radio"
+             }
+            ]
+           }
+          }
+         },
+         {
+          "reelItemRenderer": {
+           "videoId": "SHORTvideo1",
+           "headline": {
+            "simpleText": "a short"
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "9Lxm0iSnKNc",
+           "title": {
+            "runs": [
+             {
+              "text": "Queen - Bohemian Rhapsody (Karaoke Version)"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Queen - Bohemian Rhapsody (Karaoke Version) 6 minutes, 15 seconds"
+             }
+            }
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Sing King",
+              "navigationEndpoint": {
+               "clickTrackingParams": "COcBENwwGAAiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@singkingkaraoke",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCwTRjvjVge51X-ILJ4i22ew",
+                "canonicalBaseUrl": "/@singkingkaraoke"
+               }
+              }
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "Sing King",
+              "navigationEndpoint": {
+               "clickTrackingParams": "COcBENwwGAAiEwiex77Q_f2XAxV4SP4FHaJVFZ7KAQToBTgk",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@singkingkaraoke",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCwTRjvjVge51X-ILJ4i22ew",
+                "canonicalBaseUrl": "/@singkingkaraoke"
+               }
+              }
+             }
+            ]
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "6 minutes, 15 seconds"
+             }
+            },
+            "simpleText": "6:15"
+           },
+           "viewCountText": {
+            "simpleText": "57,219,130 views"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "57 million views"
+             }
+            },
+            "simpleText": "57M views"
+           }
+          }
+         }
+        ]
+       }
+      },
+      {
+       "continuationItemRenderer": {
+        "continuationEndpoint": {
+         "continuationCommand": {
+          "token": "Eq4DEhlib2hlbWlhbiByaGFwc29keSBrYXJhb2tl",
+          "request": "CONTINUATION_REQUEST_TYPE_SEARCH"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

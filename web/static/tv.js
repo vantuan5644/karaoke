@@ -1,0 +1,408 @@
+// The TV: plays the song at the head of the queue, embedded from YouTube or from the
+// server's own copy, shows "up next" between songs, and tells the server when one ends.
+import { api, connect, fmtTime, save, store } from './live.js';
+
+const $ = (sel) => document.querySelector(sel);
+const video = $('#video');
+
+const tv = {
+  state: null,
+  started: false,
+  phase: 'idle', // idle | upnext | wait | playing | error
+  qid: null, // the entry on screen
+  mode: null, // how it is playing: embed | file
+  url: null,
+  finished: null, // the entry already reported as ended
+  embedFailed: null, // the entry YouTube refused to embed
+  yt: null,
+  ytLoading: null,
+  volume: store('volume', 80),
+  muted: false,
+  joinURL: location.origin,
+  timers: {},
+};
+
+// --- Screens ---------------------------------------------------------------
+function setPhase(phase) {
+  if (phase !== 'playing') {
+    $('#banner').classList.remove('show');
+    $('#nextbar').classList.remove('show');
+  }
+  tv.phase = phase;
+  document.body.className = document.body.className.replace(/\bphase-\S+/g, '').trim() + ` phase-${phase}`;
+  reportSoon();
+}
+
+function setMode(mode) {
+  tv.mode = mode;
+  document.body.classList.toggle('mode-embed', mode === 'embed');
+  document.body.classList.toggle('mode-file', mode === 'file');
+}
+
+function later(name, ms, fn) {
+  clearTimeout(tv.timers[name]);
+  tv.timers[name] = ms === null ? undefined : setTimeout(fn, ms);
+}
+
+function flash(selector, ms) {
+  const node = $(selector);
+  node.classList.add('show');
+  later(selector, ms, () => node.classList.remove('show'));
+}
+
+function osd(text) {
+  $('#osd').textContent = text;
+  flash('#osd', 1500);
+}
+
+function showJoin() {
+  for (const img of document.querySelectorAll('.qr')) img.src = `/api/qr?text=${encodeURIComponent(tv.joinURL)}`;
+  for (const p of document.querySelectorAll('.join')) p.textContent = tv.joinURL.replace(/^https?:\/\//, '');
+}
+
+// --- Players -------------------------------------------------------------------
+function loadYouTubeAPI() {
+  if (!tv.ytLoading) {
+    tv.ytLoading = new Promise((resolve) => {
+      window.onYouTubeIframeAPIReady = resolve;
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      document.head.append(script);
+    });
+  }
+  return tv.ytLoading;
+}
+
+async function youtubePlayer() {
+  if (tv.yt) return tv.yt;
+  await loadYouTubeAPI();
+  return new Promise((resolve) => {
+    const player = new YT.Player('yt', {
+      width: '100%', height: '100%',
+      playerVars: { autoplay: 1, cc_load_policy: 0, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, playsinline: 1, rel: 0, origin: location.origin },
+      events: {
+        onReady: () => { tv.yt = player; resolve(player); },
+        onStateChange: (e) => {
+          if (e.data === YT.PlayerState.ENDED && tv.mode === 'embed') finish(tv.qid);
+          if (e.data === YT.PlayerState.PLAYING) {
+            applyVolume();
+            // Auto-generated captions ("[Music]") would sit on top of the video's own lyrics.
+            player.unloadModule?.('captions');
+          }
+          reportSoon();
+        },
+        onError: (e) => youtubeError(e.data),
+      },
+    });
+  });
+}
+
+// What the remote's buttons act on, whichever player is up.
+const players = {
+  embed: {
+    toggle: () => (tv.yt.getPlayerState() === YT.PlayerState.PLAYING ? tv.yt.pauseVideo() : tv.yt.playVideo()),
+    play: () => tv.yt.playVideo(),
+    pause: () => tv.yt.pauseVideo(),
+    seekBy: (d) => tv.yt.seekTo(Math.max(0, tv.yt.getCurrentTime() + d), true),
+    restart: () => tv.yt.seekTo(0, true),
+    position: () => tv.yt.getCurrentTime() || 0,
+    duration: () => tv.yt.getDuration() || 0,
+    state: () => ({ 1: 'playing', 2: 'paused', 3: 'buffering', 5: 'buffering', [-1]: 'buffering' })[tv.yt.getPlayerState()] || 'paused',
+  },
+  file: {
+    toggle: () => (video.paused ? video.play() : video.pause()),
+    play: () => video.play(),
+    pause: () => video.pause(),
+    seekBy: (d) => { video.currentTime = Math.max(0, video.currentTime + d); },
+    restart: () => { video.currentTime = 0; },
+    position: () => video.currentTime || 0,
+    duration: () => (Number.isFinite(video.duration) ? video.duration : 0),
+    state: () => (video.paused ? 'paused' : video.readyState < 3 ? 'buffering' : 'playing'),
+  },
+};
+
+function active() {
+  if (tv.phase !== 'playing') return null;
+  if (tv.mode === 'embed' && tv.yt) return players.embed;
+  if (tv.mode === 'file') return players.file;
+  return null;
+}
+
+function stopPlayers() {
+  if (tv.yt) tv.yt.stopVideo();
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  setMode(null);
+  tv.url = null;
+}
+
+function applyVolume() {
+  video.volume = tv.volume / 100;
+  video.muted = tv.muted;
+  if (tv.yt) {
+    tv.yt.setVolume(tv.volume);
+    if (tv.muted) tv.yt.mute(); else tv.yt.unMute();
+  }
+}
+
+// --- Following the room ----------------------------------------------------------
+function onState(state) {
+  tv.state = state;
+  route();
+}
+
+function route() {
+  const cur = tv.state?.current;
+  if (!cur) {
+    if (tv.phase !== 'idle') stopPlayers();
+    tv.qid = null;
+    setPhase('idle');
+    return;
+  }
+  if (!tv.started) return; // the start screen covers whatever is behind it
+  if (cur.qid !== tv.qid) {
+    stopPlayers();
+    tv.qid = cur.qid;
+    upNext(cur);
+    return;
+  }
+  if (tv.phase === 'upnext') {
+    fillUpNext(cur);
+    return;
+  }
+  apply(cur);
+}
+
+function upNext(cur) {
+  fillUpNext(cur);
+  setPhase('upnext');
+  const seconds = tv.state.settings.upNextSeconds || 6;
+  const bar = $('#upnext .countdown span');
+  bar.style.transition = 'none';
+  bar.style.transform = 'scaleX(1)';
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    bar.style.transition = `transform ${seconds}s linear`;
+    bar.style.transform = 'scaleX(0)';
+  }));
+  later('upnext', seconds * 1000, () => {
+    const now = tv.state?.current;
+    if (now && now.qid === cur.qid) apply(now);
+  });
+}
+
+function fillUpNext(cur) {
+  $('#upnext .who').textContent = cur.singer || 'Your turn';
+  $('#upnext .song').textContent = cur.song.title;
+}
+
+function apply(cur) {
+  let play = cur.play;
+  if (tv.phase === 'error') return; // already on its way out
+  if (play.mode === 'embed' && tv.embedFailed === cur.qid) play = { mode: 'wait' }; // until the server catches up
+  switch (play.mode) {
+    case 'embed':
+      if (tv.phase !== 'playing' || tv.mode !== 'embed') startEmbed(cur);
+      break;
+    case 'file':
+      if (tv.phase !== 'playing' || tv.mode !== 'file' || tv.url !== play.url) startFile(cur, play.url);
+      break;
+    case 'wait':
+      if (tv.phase === 'playing') stopPlayers();
+      $('#wait .song').textContent = cur.song.title;
+      $('#wait .meter i').style.width = `${Math.round((play.progress || 0) * 100)}%`;
+      $('#wait .detail').textContent = play.progress ? `Downloading ${Math.round(play.progress * 100)}%` : 'Waiting for the download to start';
+      setPhase('wait');
+      break;
+    default:
+      showError(cur, play.error || 'This song cannot play.');
+  }
+}
+
+async function startEmbed(cur) {
+  setPhase('playing');
+  const player = await youtubePlayer();
+  if (tv.qid !== cur.qid) return; // skipped while the player loaded
+  video.pause();
+  setMode('embed');
+  player.loadVideoById(cur.song.videoId);
+  applyVolume();
+  nowSinging(cur);
+}
+
+function startFile(cur, url) {
+  setPhase('playing');
+  if (tv.yt) tv.yt.stopVideo();
+  setMode('file');
+  tv.url = url;
+  video.src = url;
+  applyVolume();
+  video.play().catch((err) => console.warn('play:', err));
+  nowSinging(cur);
+}
+
+function nowSinging(cur) {
+  $('#banner .who').textContent = cur.singer ? `🎤 ${cur.singer}` : '🎤';
+  $('#banner .song').textContent = cur.song.title;
+  flash('#banner', 8000);
+}
+
+function showError(cur, message) {
+  stopPlayers();
+  $('#error .song').textContent = cur.song.title;
+  $('#error .detail').textContent = message;
+  setPhase('error');
+  later('error', 6000, () => finish(cur.qid));
+}
+
+// 101 and 150: the owner refuses embedding. 153: YouTube could not tell who is embedding it.
+// Both are what a download fixes, so the server gets the chance to fetch one.
+function youtubeError(code) {
+  const cur = tv.state?.current;
+  if (!cur || cur.qid !== tv.qid) return;
+  if ([101, 150, 153].includes(code)) {
+    tv.embedFailed = cur.qid;
+    setPhase('wait');
+    $('#wait .song').textContent = cur.song.title;
+    $('#wait .detail').textContent = "This video won't play embedded; asking the server for a copy";
+    api('/api/player/embed-failed', { method: 'POST', body: { qid: cur.qid, code } }).catch((err) => showError(cur, err.message));
+    return;
+  }
+  showError(cur, `YouTube refused to play it (error ${code}).`);
+}
+
+function finish(qid) {
+  if (!qid || tv.finished === qid) return;
+  tv.finished = qid;
+  api('/api/player/next', { method: 'POST', body: { qid } }).catch((err) => console.warn('next:', err));
+}
+
+video.addEventListener('ended', () => tv.mode === 'file' && finish(tv.qid));
+video.addEventListener('error', () => {
+  const cur = tv.state?.current;
+  if (tv.mode === 'file' && cur && video.getAttribute('src')) showError(cur, 'The downloaded copy would not play.');
+});
+
+// --- The remote's commands -------------------------------------------------------
+function onCommand({ action, value }) {
+  if (action === 'volume') {
+    tv.volume = Math.max(0, Math.min(100, tv.volume + value));
+    tv.muted = false;
+    save('volume', tv.volume);
+    applyVolume();
+    osd(`Volume ${tv.volume}`);
+    reportSoon();
+    return;
+  }
+  if (action === 'mute') {
+    tv.muted = !tv.muted;
+    applyVolume();
+    osd(tv.muted ? 'Muted' : `Volume ${tv.volume}`);
+    reportSoon();
+    return;
+  }
+  const player = active();
+  if (!player) return;
+  if (action === 'seek') {
+    player.seekBy(value);
+    osd(`${value > 0 ? '+' : ''}${value}s`);
+  } else {
+    player[action]?.();
+  }
+  reportSoon();
+}
+
+// --- Telling the server how it is going -------------------------------------------
+function status() {
+  const player = active();
+  let state = { idle: 'idle', upnext: 'waiting', wait: 'waiting', error: 'error' }[tv.phase] || 'buffering';
+  let position = 0;
+  let duration = 0;
+  if (player) {
+    try {
+      state = player.state();
+      position = player.position();
+      duration = player.duration();
+    } catch {
+      state = 'buffering';
+    }
+  }
+  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started };
+}
+
+function report() {
+  const s = status();
+  nextBar(s);
+  api('/api/player/status', { method: 'POST', body: s }).catch(() => {});
+}
+
+function reportSoon() {
+  later('report', 150, report);
+}
+
+function nextBar(s) {
+  const next = tv.state?.queue?.[0];
+  const show = next && tv.phase === 'playing' && s.duration > 0 && s.duration - s.position < 30;
+  if (show) $('#nextbar').textContent = `Next: ${next.singer ? next.singer + ' · ' : ''}${next.song.title}`;
+  $('#nextbar').classList.toggle('show', Boolean(show));
+}
+
+// --- Start, keys, cursor ------------------------------------------------------------
+function start() {
+  if (tv.started) return;
+  tv.started = true;
+  document.body.classList.add('started');
+  loadYouTubeAPI();
+  route();
+  report();
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!tv.started) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); }
+    return;
+  }
+  const keys = {
+    ' ': () => onCommand({ action: 'toggle' }), k: () => onCommand({ action: 'toggle' }),
+    ArrowRight: () => onCommand({ action: 'seek', value: 10 }), ArrowLeft: () => onCommand({ action: 'seek', value: -10 }),
+    ArrowUp: () => onCommand({ action: 'volume', value: 5 }), ArrowDown: () => onCommand({ action: 'volume', value: -5 }),
+    m: () => onCommand({ action: 'mute' }), f: toggleFullscreen,
+    n: () => tv.state?.current && finish(tv.state.current.qid),
+  };
+  const run = keys[e.key] || keys[e.key.toLowerCase()];
+  if (run) { e.preventDefault(); run(); }
+});
+
+let cursorTimer;
+document.addEventListener('mousemove', () => {
+  document.body.classList.remove('hide-cursor');
+  clearTimeout(cursorTimer);
+  cursorTimer = setTimeout(() => document.body.classList.add('hide-cursor'), 2500);
+});
+
+async function init() {
+  $('#start-button').onclick = start;
+  setPhase('idle');
+  try {
+    const info = await api('/api/info');
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+    if (local && info.urls?.length) tv.joinURL = info.urls[0];
+  } catch {
+    // The page still works; the QR code just shows this page's own address.
+  }
+  showJoin();
+  connect({ state: onState, command: onCommand });
+  setInterval(() => (tv.phase === 'playing' ? report() : nextBar(status())), 1000);
+  setInterval(() => tv.phase !== 'playing' && report(), 5000);
+}
+
+init();
+
+// For the console: what the TV thinks it is doing.
+window.karaokeTV = tv;
+window.fmtTime = fmtTime;

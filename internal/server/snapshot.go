@@ -23,6 +23,7 @@ type EntryView struct {
 type Play struct {
 	Mode     string  `json:"mode"` // "embed" (IFrame player), "file" (our own copy), "wait" or "error"
 	URL      string  `json:"url,omitempty"`
+	CDG      string  `json:"cdg,omitempty"` // the graphics, for an MP3+G
 	Progress float64 `json:"progress,omitempty"`
 	Error    string  `json:"error,omitempty"`
 }
@@ -31,6 +32,7 @@ type Play struct {
 type Features struct {
 	Download bool `json:"download"` // yt-dlp is there, so videos that refuse to embed still play
 	Lyrics   bool `json:"lyrics"`   // lyrics can be looked up
+	Library  int  `json:"library"`  // songs in folders on this computer
 }
 
 const historyShown = 30
@@ -60,7 +62,11 @@ func (s *Server) snapshot() Snapshot {
 }
 
 func (s *Server) features() Features {
-	return Features{Download: s.cfg.Downloader != nil, Lyrics: s.cfg.Lyrics != nil}
+	f := Features{Download: s.cfg.Downloader != nil, Lyrics: s.cfg.Lyrics != nil}
+	if s.cfg.Library != nil {
+		f.Library = s.cfg.Library.Len()
+	}
+	return f
 }
 
 // playFor picks how a song plays. A downloaded copy always wins (it starts at once and has
@@ -68,6 +74,9 @@ func (s *Server) features() Features {
 // asked for downloads, in which case the TV waits for the copy.
 func (s *Server) playFor(e room.Entry, settings room.Settings) Play {
 	song := e.Song
+	if song.Source == "library" {
+		return s.playFromLibrary(song)
+	}
 	if song.VideoID == "" {
 		return Play{Mode: "error", Error: "nothing to play"}
 	}
@@ -115,4 +124,20 @@ func wanted(st room.State) (download, keep []string) {
 		add(e)
 	}
 	return download, keep
+}
+
+// playFromLibrary plays a file from the library's folders, which needs nothing fetched.
+func (s *Server) playFromLibrary(song room.Song) Play {
+	if s.cfg.Library == nil {
+		return Play{Mode: "error", Error: "This server's library is switched off."}
+	}
+	it, ok := s.cfg.Library.Get(song.LibraryID)
+	if !ok {
+		return Play{Mode: "error", Error: "That file is no longer in the library."}
+	}
+	p := Play{Mode: "file", URL: "/media/lib/" + it.ID}
+	if it.Format == "cdg" {
+		p.CDG = "/media/lib/" + it.ID + "/cdg"
+	}
+	return p
 }

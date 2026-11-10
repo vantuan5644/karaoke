@@ -4,6 +4,7 @@ import { api, connect, fmtTime, icon, save, store } from './live.js';
 import { Mic } from './mic.js';
 import { LyricsPanel } from './tv-lyrics.js';
 import { KeyShift, keyLabel } from './keyshift.js';
+import { CDGView } from './tv-cdg.js';
 import { PRESETS, latencyVerdict, normalize } from './mic-core.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -157,6 +158,7 @@ function active() {
 
 function stopPlayers() {
   if (tv.yt) tv.yt.stopVideo();
+  showFormat(null);
   video.pause();
   video.removeAttribute('src');
   video.load();
@@ -290,11 +292,30 @@ function startFile(cur, url, at = 0) {
   tv.url = url;
   video.src = url;
   if (at > 0) video.addEventListener('loadedmetadata', () => { video.currentTime = at; }, { once: true });
+  showFormat(cur);
   applyVolume();
   shiftKey(cur);
   video.play().catch((err) => console.warn('play:', err));
   if (!at) nowSinging(cur);
   else osd(keyLabel(cur.key || 0)); // the copy a key change was waiting for is here
+}
+
+// --- Library files -------------------------------------------------------------------
+const cdgView = new CDGView($('#cdg'), video, $('#stage'));
+
+// showFormat sets the stage up for what a file is: MP3+G graphics, a card for plain audio,
+// or nothing over a video. null clears it.
+function showFormat(cur) {
+  const format = cur?.song.source === 'library' ? cur.song.format : null;
+  document.body.classList.toggle('format-cdg', format === 'cdg');
+  document.body.classList.toggle('format-audio', format === 'audio');
+  const card = $('#audio-card');
+  card.hidden = format !== 'audio';
+  if (format === 'audio') {
+    card.querySelector('.title').textContent = cur.song.title;
+    card.querySelector('.by').textContent = cur.song.artist || '';
+  }
+  cdgView.load(format === 'cdg' ? cur.play.cdg : null).catch((err) => osd(`Can't show the graphics: ${err.message}`));
 }
 
 // --- Key -----------------------------------------------------------------------------
@@ -303,7 +324,10 @@ const keyShift = new KeyShift(video);
 function shiftKey(cur) {
   const want = cur.key || 0;
   if (keyShift.semitones === want && (want === 0 || keyShift.stretch)) return;
-  keyShift.set(want).catch((err) => osd(`Key change failed: ${err.message}`));
+  keyShift.set(want)
+    .then(() => keyShift.latency())
+    .then((s) => { cdgView.delay = s; }) // the graphics wait for the shifted sound
+    .catch((err) => osd(`Key change failed: ${err.message}`));
 }
 
 // keyChanged tells the room when the singers move the key, and why it may take a moment.
@@ -629,4 +653,5 @@ window.karaokeTV = tv;
 window.karaokeMic = mic;
 window.karaokeLyrics = lyricsPanel;
 window.karaokeKey = keyShift;
+window.karaokeCDG = cdgView;
 window.fmtTime = fmtTime;

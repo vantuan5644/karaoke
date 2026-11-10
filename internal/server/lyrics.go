@@ -63,7 +63,7 @@ func (s *Server) lyricsFor(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "no such entry")
 		return
 	}
-	ans := lyricsAnswer{QID: qid, Query: strings.Join(lyrics.Parts(entry.Song.Title), " ")}
+	ans := lyricsAnswer{QID: qid, Query: strings.Join(lyrics.Parts(lyricsTitle(entry.Song)), " ")}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	switch id := entry.Song.LyricsID; {
@@ -79,7 +79,7 @@ func (s *Server) lyricsFor(w http.ResponseWriter, r *http.Request) {
 			ans.Track, ans.Chosen = &t, true
 		}
 	default:
-		t, found, err := s.cfg.Lyrics.Match(ctx, entry.Song.Title, entry.Song.Duration)
+		t, found, err := s.cfg.Lyrics.Match(ctx, lyricsTitle(entry.Song), entry.Song.Duration)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return

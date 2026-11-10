@@ -23,6 +23,7 @@ type Song struct {
 	VideoID    string  `json:"videoId,omitempty"`    // the YouTube song, or a lyrics song's backing track
 	Embeddable bool    `json:"embeddable,omitempty"` // VideoID plays in YouTube's IFrame player
 	LibraryID  string  `json:"libraryId,omitempty"`
+	Where      string  `json:"where,omitempty"`    // library: the folder it is in
 	Format     string  `json:"format,omitempty"`   // library: "video" or "cdg"
 	LyricsID   int     `json:"lyricsId,omitempty"` // LRCLIB record
 }

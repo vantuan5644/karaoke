@@ -16,6 +16,8 @@ songs from their phones. Nothing to install on phones or the TV, no account, no 
 - **Lyrics beside the video**, plain text with no timing, found on [LRCLIB](https://lrclib.net)
   from the video's title (Vietnamese included), with a pick-your-own search on the phone when
   the match is wrong.
+- **Your own karaoke files** beside YouTube: point it at a folder of videos or MP3+G discs
+  and the phone's search finds them first, accents or not.
 - **Key change**, up or down six semitones from the phone, at the same tempo.
 - **One binary** for Linux, macOS and Windows, with the web UI inside it, or a Docker image.
 
@@ -67,6 +69,7 @@ set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose
 | `-ytdlp-args` | | Extra yt-dlp arguments, quoted like a shell: `--cookies "C:\My Files\cookies.txt"`. |
 | `-max-height` | `720` | Tallest video to download. |
 | `-region` | | YouTube search region, e.g. `US`, `VN`. |
+| `-library` | | A folder of karaoke files to search beside YouTube; repeat for more. |
 | `-lyrics` | `true` | Look lyrics up on lrclib.net; `-lyrics=false` never asks it. |
 | `-public-url` | | The address the QR code shows. Its host name is also allowed (below). |
 | `-allow-host` | | More host names to answer to, comma-separated, e.g. `karaoke.example.com`. |
@@ -113,17 +116,41 @@ On 84 real karaoke titles (English and Vietnamese) it picked the right song ever
 is wrong, **Wrong lyrics?** on the phone searches LRCLIB by hand; *No lyrics* turns them off
 for that song. With `-lyrics=false` the server never contacts LRCLIB.
 
+## Your own karaoke files
+
+```sh
+karaoke -library ~/Karaoke            # repeat -library for more folders
+```
+
+The server reads the folder and its subfolders for:
+
+- **MP3+G**: an audio file (`.mp3`, `.m4a`, `.ogg`, `.flac`, `.wav`...) beside a `.cdg` of
+  the same name, as karaoke discs are ripped. The TV draws the graphics in step with the
+  music.
+- **Videos**: `.mp4`, `.webm`, `.m4v`, and `.mkv` or `.mov` when what's inside is H.264, VP9
+  or AV1 (what a browser can play).
+- **Audio** on its own: a backing track, shown as a card with its name (the lyrics panel
+  helps here).
+
+Names are read as `Artist - Title`, with a disc code in front (`SC8125-01 - Queen - Bohemian
+Rhapsody`) dropped. Searching matches the start of each word, without accents ("nang am"
+finds "Nắng Ấm Xa Dần"), across artist, title and folder names, and library hits show above
+YouTube's on the phone. The folders are read again every two minutes, so new files show up
+without a restart. Zipped MP3+G (`.zip`) is not read yet: unzip it first. With `ffprobe`
+(part of ffmpeg) installed, a song's length is measured when it is queued. Library files never
+leave the machine: the TV plays them from the server.
+
 ## Key change
 
 The **♭/♯** buttons on the phone's now-playing card (or **[** and **]** on the TV) move the
 song up or down a semitone, as far as six either way. The TV shifts the sound itself with
 [Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) in an AudioWorklet, so the
-tempo stays the same. It needs the song's downloaded copy, because YouTube's embedded player
+tempo stays the same. Library files change key at once. A YouTube song needs its downloaded copy, because YouTube's embedded player
 keeps its sound to itself: a song playing embedded keeps going in the original key while the
 copy downloads (a few seconds), then carries on from the same spot in the new key. In the new
 key the sound trails the picture by about 0.12 s, the shifter's processing time; in the
 original key it bypasses the shifter. The key belongs to that turn in the queue, so the next
-singer starts in the original key. Downloads must be on (`yt-dlp` found) for it.
+singer starts in the original key. For a YouTube song, downloads must be on (`yt-dlp` found).
 
 ## How playback is chosen
 
@@ -155,8 +182,8 @@ make dist     # binaries for every platform in dist/
 ```
 
 Layout: `internal/room` (queue and its saved state), `internal/youtube` (keyless search and the
-embed check), `internal/media` (yt-dlp downloads and the cache), `internal/lyrics` (LRCLIB and
+embed check), `internal/media` (yt-dlp downloads and the cache), `internal/library` (scanning and searching folders), `internal/lyrics` (LRCLIB and
 matching titles to songs; `LRCLIB_LIVE=1 go test ./internal/lyrics` checks the real titles),
-`web/static/vendor` (Signalsmith Stretch; see `THIRD_PARTY.md`), `internal/server` (HTTP API,
+`web/static/vendor` (Signalsmith Stretch and cdgraphics; see `THIRD_PARTY.md`), `internal/server` (HTTP API,
 live events over SSE, QR codes), `web/` (the phone remote `index.html` and the TV `tv.html`,
 plain ES modules, no build step). Design notes and measurements: `docs/plan.md`.

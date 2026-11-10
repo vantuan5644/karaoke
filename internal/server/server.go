@@ -38,6 +38,7 @@ type Config struct {
 	YouTube    Searcher
 	Downloader Downloader
 	Lyrics     LyricsSource // nil when lyrics are off
+	Library    Library      // nil without -library
 	Web        fs.FS        // index.html, tv.html and static/
 	URLs       []string     // addresses phones can reach this server at, best first
 	AllowHosts []string     // host names to answer to besides addresses and home names (see hosts.go)
@@ -122,6 +123,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/queue/{qid}/key", s.setKey)
 
 	mux.HandleFunc("GET /media/yt/{id}", s.youtubeFile)
+	mux.HandleFunc("GET /media/lib/{id}", s.libraryFile)
+	mux.HandleFunc("GET /media/lib/{id}/cdg", s.libraryFile)
 	return securityHeaders(knownHosts(s.cfg.AllowHosts, sameOriginWrites(mux)))
 }
 

@@ -35,6 +35,11 @@
       </form>
       <label class="switch"><input type="checkbox" id="karaoke-only" checked><span></span>Karaoke versions only</label>
       <p id="search-hint" class="hint">Type a song name. "karaoke" is added for you, so sing-along versions come first.</p>
+      <section id="library-results" hidden>
+        <h2 class="sub">On this computer <span id="lib-count" class="count"></span></h2>
+        <ul id="lib-results" class="list"></ul>
+      </section>
+      <h2 id="yt-heading" class="sub" hidden>YouTube</h2>
       <ul id="results" class="list"></ul>
       <button id="more" class="ghost wide" type="button" hidden>More results</button>
     </section>

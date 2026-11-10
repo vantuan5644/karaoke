@@ -124,7 +124,21 @@ the bottom while there is more.
 
 ## Other sources (after that)
 
-- *Library*: a folder of karaoke files (MP4/WebM, MP3+CDG pairs), searched accent-insensitively
-  ("nang am" finds "Nắng Ấm"); CDG drawn on a canvas by our own decoder.
+- *Library* (done): `-library DIR`. `internal/library` walks the folders (skipping hidden and
+  NAS thumbnail folders), pairs audio with a `.cdg` of the same name as MP3+G, else takes a
+  video, else plain audio; reads `Artist - Title` from the name, dropping a disc code in front
+  only when an artist and title follow it (so "Prince - 1999" keeps its title); and searches
+  folded words by prefix. IDs are a hash of folder and path, so a saved queue finds its songs
+  after a restart. Files are served by ID only (`/media/lib/{id}`, `/cdg`), never by a path
+  from the request. The TV draws CD+G with cdgraphics 7.0.0 (vendored; the renderer Karaoke
+  Eternal uses) rather than our own decoder: 7 KB, no dependencies, and it re-renders from the
+  start on a backward seek. Not done: zipped MP3+G, and watching the folders (a rescan every
+  2 minutes instead).
+
+  What was tested: a generated CD+G (blue, then a red block drawn over 1 to 2 s, then green
+  over 3 to 4 s) read back from the TV's canvas as blue at 0.3 s, red at 2.4 s, green after a
+  seek to 4.5 s, red again after a seek back to 2.5 s; a key change delayed the graphics by the
+  shifter's 120 ms. A video in a folder named "Việt" was found by "nang am" and played at its
+  size; plain audio showed its card.
 - *Lyrics songs*: any song with lyrics on LRCLIB, played over a YouTube backing track of
   matching length, or over the song itself with the vocals removed.

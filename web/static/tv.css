@@ -6,6 +6,15 @@ body.hide-cursor { cursor: none; }
 #video { object-fit: contain; background: #000; }
 #yt-wrap, #video { visibility: hidden; }
 body.mode-embed #yt-wrap, body.mode-file #video { visibility: visible; }
+/* A file from the library: MP3+G draws its graphics over the playing audio; plain audio gets
+   a card with its name. Either way the <video> element only makes the sound. */
+#cdg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+body:is(.format-cdg, .format-audio).mode-file #video { visibility: hidden; }
+#audio-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2vh; padding: 0 8vw; text-align: center; background: radial-gradient(circle at 50% 40%, #3b2457, #0d0a14 70%); }
+#audio-card[hidden], #cdg[hidden] { display: none; }
+#audio-card .title { font-size: 6vh; font-weight: 700; line-height: 1.15; }
+#audio-card .by { font-size: 3.4vh; color: var(--muted, #b9b3c7); }
 
 .screen {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;

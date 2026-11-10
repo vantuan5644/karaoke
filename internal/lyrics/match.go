@@ -5,21 +5,11 @@ import (
 	"strings"
 	"unicode"
 
-	"golang.org/x/text/runes"
-	"golang.org/x/text/transform"
-	"golang.org/x/text/unicode/norm"
+	"github.com/vantuan5644/karaoke/internal/fold"
 )
 
-// Fold lowercases s and takes the accents off ("Nắng Ấm" becomes "nang am"), so a title
-// typed or uploaded without them still matches.
-func Fold(s string) string {
-	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-	out, _, err := transform.String(t, s)
-	if err != nil {
-		out = s
-	}
-	return strings.NewReplacer("đ", "d", "Đ", "d", "ł", "l", "ø", "o", "ß", "ss").Replace(strings.ToLower(out))
-}
+// Fold lowercases s and takes the accents off; see fold.String.
+func Fold(s string) string { return fold.String(s) }
 
 var (
 	bracketed = regexp.MustCompile(`\([^)]*\)|\[[^\]]*\]|【[^】]*】|「[^」]*」|\{[^}]*\}|"[^"]*karaoke[^"]*"`)

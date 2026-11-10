@@ -171,3 +171,14 @@ dialog input:not([type="checkbox"]) {
 .keyrow output { min-width: 2.2em; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 .keyrow .act { width: 38px; height: 38px; font-size: 1.15rem; }
 .keyrow .hint { margin: 0; font-size: .8rem; }
+
+/* Songs from the server's own folders: no thumbnail, so a tile saying what kind of file */
+.thumb { width: 112px; aspect-ratio: 16/9; border-radius: 8px; flex: none; display: grid; place-items: center;
+  font-size: .72rem; font-weight: 700; letter-spacing: .04em; color: #fff; background: #3a2a55; }
+.thumb.file-cdg { background: linear-gradient(135deg, #5b2a86, #a23b72); }
+.thumb.file-video { background: linear-gradient(135deg, #1f4e79, #2d7d9a); }
+.thumb.file-audio { background: linear-gradient(135deg, #3d5a3c, #6a8f4e); }
+.now .thumb { width: 96px; }
+@media (max-width: 380px) { .item .thumb { width: 88px; } }
+h2.sub { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 2px 6px; font-weight: 600; }
+h2.sub .count { font-weight: 400; }

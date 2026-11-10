@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vantuan5644/karaoke/internal/library"
 	"github.com/vantuan5644/karaoke/internal/lyrics"
 	"github.com/vantuan5644/karaoke/internal/media"
 	"github.com/vantuan5644/karaoke/internal/room"
@@ -43,6 +44,7 @@ type options struct {
 	publicURL string
 	allowHost string
 	lyrics    bool
+	library   []string
 	tlsCert   string
 	tlsKey    string
 	open      bool
@@ -67,6 +69,10 @@ func parseFlags() options {
 	flag.StringVar(&o.region, "region", "", "two-letter region for YouTube search, e.g. US or VN (default: YouTube guesses)")
 	flag.StringVar(&o.publicURL, "public-url", "", "the address the TV's QR code shows, if not this machine's LAN address")
 	flag.BoolVar(&o.lyrics, "lyrics", true, "look songs' lyrics up on lrclib.net for the TV's lyrics panel (-lyrics=false: never ask it)")
+	flag.Func("library", "a folder of karaoke files (videos, MP3+G, audio) to search beside YouTube; repeat for more", func(dir string) error {
+		o.library = append(o.library, dir)
+		return nil
+	})
 	flag.StringVar(&o.allowHost, "allow-host", "", "more host names to answer to, comma-separated (addresses, localhost, bare machine names, .local/.lan/.home.arpa/.ts.net and -public-url's always work)")
 	flag.StringVar(&o.tlsCert, "tls-cert", "", "serve HTTPS with this certificate (the TV page needs HTTPS for a mic, unless it is on localhost)")
 	flag.StringVar(&o.tlsKey, "tls-key", "", "the key for -tls-cert")
@@ -106,6 +112,13 @@ func run(o options) error {
 	if o.lyrics {
 		cfg.Lyrics = lyrics.New("karaoke/" + version + " (self-hosted)")
 	}
+	var lib *library.Library
+	if len(o.library) > 0 {
+		if lib, err = openLibrary(o.library); err != nil {
+			return err
+		}
+		cfg.Library = lib
+	}
 	// Downloads can report progress before the server exists, from their own goroutines.
 	var live atomic.Pointer[server.Server]
 	dl, err := newDownloader(o, func() {
@@ -143,6 +156,9 @@ func run(o options) error {
 	}
 	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if lib != nil {
+		go lib.Run(stop, libraryRescan)
+	}
 	go func() {
 		<-stop.Done()
 		shutdown, done := context.WithTimeout(context.Background(), 5*time.Second)
@@ -267,4 +283,24 @@ func splitArgs(s string) ([]string, error) {
 		args = append(args, cur.String())
 	}
 	return args, nil
+}
+
+// libraryRescan is how often the library's folders are read again for new songs.
+const libraryRescan = 2 * time.Minute
+
+func openLibrary(dirs []string) (*library.Library, error) {
+	lib, err := library.New(dirs)
+	if err != nil {
+		return nil, err
+	}
+	if p, err := exec.LookPath("ffprobe"); err == nil {
+		lib.FFprobe = p
+	}
+	start := time.Now()
+	n, err := lib.Scan()
+	if err != nil {
+		log.Printf("library: %v", err)
+	}
+	log.Printf("library: %d songs in %s (%s)", n, strings.Join(lib.Roots(), ", "), time.Since(start).Round(time.Millisecond))
+	return lib, nil
 }

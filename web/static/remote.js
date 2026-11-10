@@ -68,6 +68,7 @@ async function search(append) {
   const params = new URLSearchParams({ source: 'youtube' });
   if (append) params.set('more', view.more);
   else params.set('q', view.query);
+  const local = append ? null : searchLibrary();
   if ($('#karaoke-only').checked) params.set('karaoke', '1');
   const button = append ? $('#more') : $('#search-form button');
   button.disabled = true;
@@ -79,28 +80,57 @@ async function search(append) {
   list.append(...page.results.map(resultItem));
   view.more = page.more || '';
   $('#more').hidden = !view.more || page.results.length === 0;
-  $('#search-hint').hidden = list.children.length > 0;
-  if (!append && page.results.length === 0) {
+  const onComputer = append ? 0 : await local;
+  $('#search-hint').hidden = list.children.length > 0 || onComputer > 0;
+  if (!append && page.results.length === 0) $('#yt-heading').hidden = true;
+  if (!append && page.results.length === 0 && !onComputer) {
     $('#search-hint').hidden = false;
     $('#search-hint').textContent = 'Nothing found. Try fewer words, or turn off "Karaoke versions only".';
   }
 }
 
 function canPlay(song) {
-  return song.embeddable || Boolean(view.state?.features?.download);
+  return song.source === 'library' || song.embeddable || Boolean(view.state?.features?.download);
+}
+
+const FORMATS = { cdg: 'MP3+G', video: 'Video', audio: 'Audio' };
+
+// thumb is a song's picture: YouTube's thumbnail, or for a file on this computer, its kind.
+function thumb(song) {
+  if (song.thumb) return el('img', { src: song.thumb, alt: '', loading: 'lazy', width: 112, height: 63 });
+  return el('div', { class: `thumb file-${song.format || 'video'}`, 'aria-hidden': 'true' }, FORMATS[song.format] || 'File');
+}
+
+// The library: songs in folders on the server's computer, searched there (fast, no quota).
+async function searchLibrary() {
+  const box = $('#library-results');
+  const count = view.state?.features?.library || 0;
+  if (!count || !view.query) {
+    box.hidden = true;
+    $('#yt-heading').hidden = true;
+    return 0;
+  }
+  const page = await attempt(() => api(`/api/search?${new URLSearchParams({ source: 'library', q: view.query })}`));
+  const found = page?.results || [];
+  $('#lib-results').replaceChildren(...found.map(resultItem));
+  $('#lib-count').textContent = found.length >= 40 ? '40+' : String(found.length);
+  box.hidden = found.length === 0;
+  $('#yt-heading').hidden = found.length === 0;
+  if (found.length) $('#search-hint').hidden = true;
+  return found.length;
 }
 
 function resultItem(song) {
   const playable = canPlay(song);
-  const meta = [song.artist, fmtTime(song.duration), song.views].filter(Boolean).join(' · ');
+  const meta = [song.artist, fmtTime(song.duration), song.views, song.where].filter(Boolean).join(' · ');
   let badge = null;
-  if (!song.embeddable) {
+  if (song.source !== 'library' && !song.embeddable) {
     badge = playable
       ? el('span', { class: 'badge dl', text: 'Downloads first', title: "This video can't play embedded, so the server downloads it" })
       : el('span', { class: 'badge err', text: "Can't play here", title: 'It refuses to embed, and the server has no yt-dlp' });
   }
   return el('li', { class: `item${playable ? '' : ' blocked'}` },
-    el('img', { src: song.thumb, alt: '', loading: 'lazy', width: 112, height: 63 }),
+    thumb(song),
     el('div', { class: 'body' },
       el('div', { class: 'title', text: song.title }),
       el('div', { class: 'meta', text: meta }),
@@ -170,7 +200,7 @@ function renderNow() {
     now.className = 'now';
     now.replaceChildren(
       el('div', { class: 'row' },
-        el('img', { src: cur.song.thumb, alt: '' }),
+        thumb(cur.song),
         el('div', { class: 'what' },
           el('div', { class: 'label', text: 'Now singing' }),
           el('div', { class: 'title', text: cur.song.title }),
@@ -290,7 +320,7 @@ function renderHistory() {
   const history = view.state?.history || [];
   $('#history-empty').hidden = history.length > 0;
   $('#history').replaceChildren(...history.map((entry) => el('li', { class: 'item' },
-    el('img', { src: entry.song.thumb, alt: '', loading: 'lazy', width: 112, height: 63 }),
+    thumb(entry.song),
     el('div', { class: 'body' },
       el('div', { class: 'title', text: entry.song.title }),
       entry.singer ? el('div', { class: 'who', text: `🎤 ${entry.singer}` }) : null),

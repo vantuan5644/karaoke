@@ -44,8 +44,10 @@ type MicStatus struct {
 const statusFresh = 10 * time.Second
 
 var (
-	errUnplayable = errors.New("this video can't play embedded, and yt-dlp isn't installed to download it")
-	playerActions = map[string]bool{
+	errUnplayable   = errors.New("this video can't play embedded, and yt-dlp isn't installed to download it")
+	errNoLibrary    = errors.New("this server has no library (start it with -library)")
+	errNotInLibrary = errors.New("that file is no longer in the library")
+	playerActions   = map[string]bool{
 		"toggle": true, "play": true, "pause": true, "restart": true,
 		"seek": true, "volume": true, "mute": true,
 		"mic-toggle": true, "mic-volume": true, "mic-echo": true, "mic-reverb": true, "mic-preset": true,
@@ -89,12 +91,17 @@ type searchResults struct {
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query, more := strings.TrimSpace(q.Get("q")), q.Get("more")
-	if source := q.Get("source"); source != "" && source != "youtube" {
-		writeError(w, http.StatusBadRequest, "unknown source "+source)
+	source := q.Get("source")
+	if source != "" && source != "youtube" && source != "library" {
+		writeError(w, http.StatusBadRequest, "unknown source "+clean(source, 20))
 		return
 	}
 	if len(query) > 200 || len(more) > 4096 {
 		writeError(w, http.StatusBadRequest, "query too long")
+		return
+	}
+	if source == "library" {
+		s.searchLibrary(w, query)
 		return
 	}
 	if query == "" && more == "" {
@@ -140,7 +147,7 @@ func (s *Server) enqueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	song, err := s.checkSong(r.Context(), req.Song)
-	if errors.Is(err, errUnplayable) {
+	if errors.Is(err, errUnplayable) || errors.Is(err, errNoLibrary) || errors.Is(err, errNotInLibrary) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -195,6 +202,8 @@ func (s *Server) checkSong(ctx context.Context, in room.Song) (room.Song, error)
 			return room.Song{}, errUnplayable
 		}
 		return song, nil
+	case "library":
+		return s.librarySongFor(ctx, in.LibraryID)
 	default:
 		return room.Song{}, errors.New("unknown source " + clean(in.Source, 20))
 	}

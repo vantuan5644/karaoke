@@ -107,6 +107,12 @@ type harness struct {
 
 func newHarness(t *testing.T, withDownloads bool) *harness {
 	t.Helper()
+	return newHarnessWith(t, withDownloads, nil)
+}
+
+// newHarnessWith lets a test change the server's configuration before it starts.
+func newHarnessWith(t *testing.T, withDownloads bool, edit func(*Config)) *harness {
+	t.Helper()
 	rm, err := room.OpenRoom(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -123,6 +129,9 @@ func newHarness(t *testing.T, withDownloads bool) *harness {
 	if withDownloads {
 		h.dl = &fakeDownloader{status: map[string]media.Status{}, files: map[string]string{}}
 		cfg.Downloader = h.dl
+	}
+	if edit != nil {
+		edit(&cfg)
 	}
 	h.srv = New(cfg)
 	h.web = httptest.NewServer(h.srv.Handler())

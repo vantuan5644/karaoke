@@ -126,18 +126,20 @@ export function tunePlan(tune, speed = DEFAULTS.speed, notes = 0) {
   const s = clamp(tune, 0, 100) / 100;
   if (s === 0) return { amount: 0, seconds: 0, notes };
   const v = clamp(speed, 0, 100) / 100;
-  return { amount: s, seconds: 0.4 * (1 - v) * (1 - v) + 0.005, notes };
+  return { amount: s, seconds: 0.4 * (1 - v) * (1 - v) + 0.001, notes };
 }
 
 // TUNE_DELAY_MS is what pitch correction adds while it is on (the Go engine's DelayMs).
 export const TUNE_DELAY_MS = 8;
 
-// upgrade carries settings saved before Tune had a Speed over to the same sound. One knob set
-// both then: t = tune/100 pulled min(1, t/0.6) of the way, gliding 0.3·(1 − t)² + 0.005 s.
+// upgrade carries settings saved before Tune had a Speed over to the same pull and glide.
+// One knob set both then: t = tune/100 pulled min(1, t/0.6) of the way, gliding
+// 0.3·(1 − t)² + 0.005 s, where Speed v now glides 0.4·(1 − v)² + 0.001 s.
 export function upgrade(saved = {}) {
   if (saved.speed !== undefined || !(saved.tune > 0)) return saved;
   const t = clamp(saved.tune, 0, 100) / 100;
-  return { ...saved, tune: Math.round(Math.min(1, t / 0.6) * 100), speed: Math.round((1 - Math.sqrt(0.75) * (1 - t)) * 100) };
+  const glide = 0.3 * (1 - t) ** 2 + 0.005;
+  return { ...saved, tune: Math.round(Math.min(1, t / 0.6) * 100), speed: Math.round((1 - Math.sqrt((glide - 0.001) / 0.4)) * 100) };
 }
 
 // The phones' commands, by number: mic-preset 0..2 and mic-tune-preset 0..3.
@@ -240,9 +242,31 @@ export function howlScore(spectrum) {
   return { score: total > 0 ? near / total : 0, bin };
 }
 
+// HARMONIC_DB is how close to a peak (in dB) the peak's octave must be for it to be a voice.
+const HARMONIC_DB = 25;
+
+// voiced says whether a peak has an octave beside it, as a voice's notes do: even a hum has
+// its second harmonic within 10 to 20 dB of the note, and a voice's loudest partial may be
+// that second harmonic, with the note an octave below. Feedback is a single tone. Clipping
+// gives it odd harmonics (a third, a fifth), hardly a second, so only octaves count.
+export function voiced(spectrum, bin) {
+  const near = (centre, width) => {
+    let top = -Infinity;
+    for (let i = Math.max(2, centre - width); i <= centre + width && i < spectrum.length; i++) top = Math.max(top, spectrum[i]);
+    return top;
+  };
+  // Each octave is looked for at least 4 bins from the peak, past the window's main lobe
+  // (±3 bins), so below about 140 Hz a tone counts as feedback as before.
+  const floor = spectrum[bin] - HARMONIC_DB;
+  return (bin >= 6 && 2 * bin + 2 < spectrum.length && near(2 * bin, 2) >= floor)
+    || (bin >= 8 && near(Math.floor(bin / 2), 1) >= floor);
+}
+
 // HowlGuard tells feedback from a held note. Both put most of their energy in one narrow
-// peak; feedback is also loud and stays on exactly one frequency, so the guard waits for a
-// loud, narrow peak that does not move for a full second.
+// peak; feedback is also loud, a single tone with no octave beside it, and stays on exactly
+// one frequency, so the guard waits for a loud, narrow, lone peak that does not move for a
+// full second. (A boosted, pitch-corrected held note is loud and steady too: only its
+// harmonics give it away.)
 export class HowlGuard {
   constructor({ score = 0.7, level = 0.5, holdMs = 1000 } = {}) {
     Object.assign(this, { minScore: score, minLevel: level, holdMs });
@@ -258,7 +282,7 @@ export class HowlGuard {
   // is time to turn the mic down.
   update(spectrum, level, now) {
     const { score, bin } = howlScore(spectrum);
-    if (score < this.minScore || level < this.minLevel) {
+    if (score < this.minScore || level < this.minLevel || voiced(spectrum, bin)) {
       this.reset();
       return false;
     }

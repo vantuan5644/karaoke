@@ -122,8 +122,29 @@ func howlScore(db []float64) (float64, int) {
 	return near / total, bin
 }
 
-// howlGuard waits for a loud, narrow peak that stays on one frequency for a full second:
-// feedback does that, a held note does not.
+// harmonicDb is how close to a peak (in dB) the peak's octave must be for it to be a voice.
+const harmonicDb = 25
+
+// voiced says whether a peak has an octave beside it, as a voice's notes do: even a hum has
+// its second harmonic within 10 to 20 dB of the note, and a voice's loudest partial may be
+// that second harmonic, with the note an octave below. Feedback is a single tone. Clipping
+// gives it odd harmonics (a third, a fifth), hardly a second, so only octaves count.
+func voiced(db []float64, bin int) bool {
+	near := func(centre, width int) float64 {
+		top := math.Inf(-1)
+		for i := max(2, centre-width); i <= centre+width && i < len(db); i++ {
+			top = math.Max(top, db[i])
+		}
+		return top
+	}
+	// Each octave is looked for at least 4 bins from the peak, past the window's main lobe
+	// (±3 bins), so below about 140 Hz a tone counts as feedback as before.
+	floor := db[bin] - harmonicDb
+	return (bin >= 6 && 2*bin+2 < len(db) && near(2*bin, 2) >= floor) || (bin >= 8 && near(bin/2, 1) >= floor)
+}
+
+// howlGuard waits for a loud, narrow peak with no octave beside it, on one frequency for a
+// full second: feedback does that, a held note does not, even boosted and pitch corrected.
 type howlGuard struct {
 	since float64 // seconds
 	bin   int
@@ -133,7 +154,7 @@ func newHowlGuard() howlGuard { return howlGuard{bin: -1} }
 
 func (g *howlGuard) update(db []float64, level, now float64) bool {
 	score, bin := howlScore(db)
-	if score < 0.7 || level < 0.5 {
+	if score < 0.7 || level < 0.5 || voiced(db, bin) {
 		g.bin = -1
 		return false
 	}

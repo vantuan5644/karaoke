@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULTS, HowlGuard, PRESETS, SCALES, TUNE_PRESETS, howlScore, impulse, keyName, latencyVerdict, majorNotes, medianMs,
+  DEFAULTS, HowlGuard, PRESETS, SCALES, TUNE_PRESETS, howlScore, voiced, impulse, keyName, latencyVerdict, majorNotes, medianMs,
   normalize, notesFor, params, scaleLabel, shiftNotes, tunePlan,
   commandChanges, commandSaid, engineText, knobText, upgrade,
 } from '../static/mic-core.js';
@@ -35,10 +35,10 @@ test('params match the Go engine', () => {
   assert.ok(near(p.warmthDb, 3) && near(p.brightDb, 2) && near(p.doubleMix, 0.35) && p.tune === 30, JSON.stringify(p));
   assert.ok(near(p.boostGain, 3.981071705534973) && p.speed === 70 && p.notes === 2741, JSON.stringify(p));
   const t = tunePlan(30, 50);
-  assert.ok(near(t.amount, 0.3) && near(t.seconds, 0.4 * 0.25 + 0.005), JSON.stringify(t));
+  assert.ok(near(t.amount, 0.3) && near(t.seconds, 0.4 * 0.25 + 0.001), JSON.stringify(t));
   assert.deepEqual(tunePlan(0, 100), { amount: 0, seconds: 0, notes: 0 });
   assert.equal(tunePlan(100, 100).amount, 1);
-  assert.ok(near(tunePlan(100, 100).seconds, 0.005));
+  assert.ok(near(tunePlan(100, 100).seconds, 0.001));
   for (const [name, preset] of Object.entries(TUNE_PRESETS)) assert.deepEqual(normalize({ ...DEFAULTS, ...preset }).tune, preset.tune, name);
 });
 
@@ -105,6 +105,29 @@ test('HowlGuard waits for a loud tone that holds still for a second', () => {
   assert.equal(run(moving), -1, 'a moving pitch is not feedback');
 });
 
+test('HowlGuard lets a loud held note be: its octave says it is a voice', () => {
+  const run = (spectrum) => {
+    const g = new HowlGuard();
+    return Array.from({ length: 15 }).findIndex((_, i) => g.update(spectrum, 0.9, i * 100));
+  };
+  const withPartials = (partials) => {
+    const s = new Float32Array(512).fill(-90);
+    for (const [bin, db] of partials) s[bin] = db;
+    return s;
+  };
+  // A boosted "ooh" at bin 10: its second harmonic 12 dB down, its third 19.
+  const hum = withPartials([[10, -5], [20, -17], [30, -24]]);
+  assert.ok(howlScore(hum).score > 0.7, 'one narrow peak, as far as howlScore can tell');
+  assert.equal(run(hum), -1, 'a hum is a voice');
+  // A vowel whose loudest partial is its second harmonic: the note is an octave below.
+  assert.equal(run(withPartials([[20, -5], [10, -15], [40, -22]])), -1, 'a peak with its note an octave down is a voice');
+  // Feedback that clips has odd harmonics, hardly a second: still feedback.
+  assert.equal(run(withPartials([[40, -5], [120, -15], [200, -20]])), 10, 'clipped feedback');
+  // Far from the octave, a weak second harmonic does not save a tone.
+  assert.equal(run(withPartials([[40, -5], [80, -40]])), 10, 'a tone with a faint octave');
+  assert.equal(voiced(withPartials([[4, -5], [8, -10]]), 4), false, 'below 6 bins the octave sits in the main lobe: not counted');
+});
+
 test('medianMs uses the tries that heard the click', () => {
   assert.equal(medianMs([0.021, null, 0.019, 0.08]), 21);
   assert.equal(medianMs([0.02, 0.03]), 25);
@@ -133,8 +156,10 @@ test('engineText says where the voice is processed', () => {
 });
 
 test('upgrade keeps the sound of settings saved before Speed', () => {
-  // One knob then: 100 snapped (the robot), 30 pulled half way and slowly.
-  assert.deepEqual(upgrade({ tune: 100, echo: 40 }), { tune: 100, speed: 100, echo: 40 });
+  // One knob then: 100 pulled all the way in 5 ms, 30 half way and slowly.
+  const robot = upgrade({ tune: 100, echo: 40 });
+  assert.deepEqual({ ...robot, speed: undefined }, { tune: 100, speed: undefined, echo: 40 });
+  assert.ok(Math.abs(tunePlan(robot.tune, robot.speed).seconds - 0.005) < 0.001, 'the same 5 ms glide');
   const old = upgrade({ tune: 30 });
   assert.equal(old.tune, 50);
   const before = 0.3 * 0.7 ** 2 + 0.005;

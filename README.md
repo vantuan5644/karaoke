@@ -100,7 +100,8 @@ under the song for turning it on, setting levels and picking a preset mid-song.
 
 **Mic boost** (0 to 24 dB) is for a quiet mic: it raises the voice going in, before anything
 else, where **Mic volume** sets how loud it comes out. Sing your loudest and keep the level
-meter out of the far right.
+meter out of the far right. The feedback guard turns the mic down only for a lone tone: a
+held note, however loud, has its octave beside it, so a boosted voice doesn't set it off.
 
 **Voice** has four more knobs, all off to start:
 
@@ -115,7 +116,7 @@ it from there:
 
 - **Tune** is how far each note is pulled: 0 is off, 100 all the way onto the note.
 - **Speed** is how fast. Slow keeps slides and vibrato and only straightens a held note; 100
-  jumps from note to note at once, the robotic effect.
+  jumps from note to note at once and irons the vibrato out, the robotic effect.
 - **Notes** is which notes count. *Every semitone* pulls to the nearest one, whatever the song.
   *The song's key* pulls only to the song's own notes, so a note sung off goes to the nearest
   note in the key, never to one outside it: the server hears the key in the song's sound

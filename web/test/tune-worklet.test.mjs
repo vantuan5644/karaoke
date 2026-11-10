@@ -90,3 +90,37 @@ test('tune keeps the level', () => {
   const db = 20 * Math.log10(rms(y.subarray(RATE / 4)) / rms(x.subarray(RATE / 4)));
   assert.ok(Math.abs(db) < 1, `level changed by ${db.toFixed(2)} dB`);
 });
+
+// vibratoSaw is a sung note with vibrato: hz, swinging depth cents either way at 5.5 Hz.
+function vibratoSaw(hz, depth, n) {
+  const out = new Float32Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const f = hz * 2 ** ((depth / 1200) * Math.sin((2 * Math.PI * 5.5 * i) / RATE));
+    phase += (2 * Math.PI * f) / RATE;
+    for (let k = 1; k * f < 8000; k++) out[i] += (0.3 * Math.sin(k * phase)) / k;
+  }
+  return out;
+}
+
+// wobble is how far, in cents (a standard deviation), the pitch of x's second half swings.
+function wobble(p, x) {
+  const d = new p.tuner.det.constructor(RATE);
+  const c = [];
+  x.forEach((v, i) => {
+    d.push(v);
+    if (d.updated && i > x.length / 2 && d.period > 0) c.push(cents(RATE / d.period, 220));
+  });
+  const mean = c.reduce((s, v) => s + v, 0) / c.length;
+  return Math.sqrt(c.reduce((s, v) => s + (v - mean) ** 2, 0) / c.length);
+}
+
+test('at full speed a vibrato comes out flattened, and Strong keeps it no wider', () => {
+  // As the Go engine's TestTuneFlattensVibratoAtFullSpeed.
+  const x = vibratoSaw(220, 60, 2 * RATE);
+  const sung = wobble(processor(100, 100), x);
+  const robot = wobble(processor(100, 100), run(processor(100, 100), x));
+  const strong = wobble(processor(100, 65), run(processor(100, 65), x));
+  assert.ok(robot < 0.5 * sung, `robot: ${robot.toFixed(1)} cents from ${sung.toFixed(1)}`);
+  assert.ok(strong < 1.1 * sung, `strong: ${strong.toFixed(1)} cents from ${sung.toFixed(1)}`);
+});

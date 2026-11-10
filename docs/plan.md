@@ -151,7 +151,7 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    the high-pass, so the meter, the feedback guard and the compressor all see the raised level
    (Mic volume comes after the compressor, so it only makes the voice louder going out).
    Tune split into Tune, how much of the way (amount = tune/100), and Speed, how fast (the
-   glide takes 0.4·(1 − speed/100)² + 0.005 s: 0.4 s at 0, 0.1 s at 50, 5 ms at 100), with
+   glide takes 0.4·(1 − speed/100)² + 0.001 s: 0.4 s at 0, 0.1 s at 50, 1 ms at 100), with
    presets Natural (70, 35), Strong (100, 65) and Robot (100, 100). Notes is a 12-bit mask
    of the notes allowed, C first, 0 for all; the tuner pulls to the nearest allowed note and
    holds the one it is on until another allowed note is 0.3 semitone nearer. The mask is
@@ -180,9 +180,29 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    file's modification time each time it is used, which a review caught re-running ffmpeg on
    every ask. One song is heard at a time, and a request that gives up waiting is told to ask
    again. Settings saved by the one-knob version are carried over to the same sound (Tune
-   min(1, t/0.6) of the way, Speed 1 − √0.75·(1 − t)), and the server takes what a page leaves
-   out as the default rather than 0. The TV page never opens the mic before Start, even to
-   give it a new song's notes.
+   min(1, t/0.6) of the way, and the Speed that glides as long), and the server takes what a
+   page leaves out as the default rather than 0. The TV page never opens the mic before
+   Start, even to give it a new song's notes.
+8. **Two fixes from singing with it** (done). *The presets sounded alike.* Measured through
+   the real PipeWire engine with a synthetic voice (a held note 40 cents flat, ±60-cent
+   vibrato at 5.5 Hz, a slow slide G3 to B3), held notes and slides were corrected as meant,
+   but vibrato was not: Robot left 39.5 of 41 cents, and Strong widened it to 50. YIN compared
+   the oldest 32 ms of its 46 ms span with the rest, so an estimate was of the voice about
+   28 ms back, while the grains it corrected are read 8 ms back: the correction landed 20 ms
+   late, 40° out of phase with a vibrato. YIN now compares the newest stretch with the ones
+   a lag earlier, over 16 ms rather than 32, and Speed 100 glides in 1 ms rather than 5; the
+   delay stays 8 ms. Robot now leaves 11.5 cents of the 41 at A3 (14 at A2, 17 at E2), Strong
+   41, and slides step 98% of the time at Robot; the pitch tests at 82 to 660 Hz stay within
+   5 cents. A 2.5 ms estimate hop measured the same, so it stays 5 ms. *A boosted mic dropped
+   to a quarter.* The feedback guard calls a loud, narrow peak that holds still for a second
+   feedback, and cuts the volume to 60% each time, down to 25%. A loud hummed note (harmonics
+   falling as 1/h², so the note holds 92% of the energy) at +12 dB set it off three times in
+   8 s; without boost the mic never reached its level test. A voice has its octave within 10
+   to 20 dB of the note, or its note an octave below its loudest partial; feedback is a lone
+   tone, and clipping gives it odd harmonics, hardly a second. So a peak with either octave
+   within 25 dB is a voice, looked for at least 4 bins from the peak, past the Blackman
+   window's main lobe. Held hums at 165 to 440 Hz, boosted 12 or 24 dB and pitch corrected,
+   now pass; pure and clipped tones are still cut.
 
 ## Lyrics panel (done)
 

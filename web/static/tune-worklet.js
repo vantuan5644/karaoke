@@ -8,7 +8,7 @@ const DELAY_MS = 8;
 const DECIMATE = 3;
 const MIN_HZ = 70;
 const MAX_HZ = 800;
-const YIN_WINDOW = 512;
+const YIN_WINDOW = 256; // 16 ms at 16 kHz: short, so an estimate is of the voice as it is now
 const YIN_HOP = 80;
 const YIN_CUTOFF = 0.15;
 const QUIET_RMS = 0.003;
@@ -73,16 +73,20 @@ class Detector {
     const span = x.length;
     const start = (this.pos - span + n) % n;
     for (let i = 0; i < span; i++) x[i] = this.buf[(start + i) % n];
+    // The newest stretch is compared with the ones a lag earlier, so the estimate is of the
+    // voice as recent as it can be: the grains it corrects are only DELAY_MS behind, and a
+    // correction that lands late turns vibrato against itself.
+    const newest = span - YIN_WINDOW;
     let energy = 0;
-    for (let j = 0; j < YIN_WINDOW; j++) energy += x[j] * x[j];
+    for (let j = newest; j < span; j++) energy += x[j] * x[j];
     if (Math.sqrt(energy / YIN_WINDOW) < QUIET_RMS) return 0;
     const d = this.diff;
     d[0] = 1;
     let running = 0;
     for (let tau = 1; tau <= this.maxLag; tau++) {
       let sum = 0;
-      for (let j = 0; j < YIN_WINDOW; j++) {
-        const delta = x[j] - x[j + tau];
+      for (let j = newest; j < span; j++) {
+        const delta = x[j] - x[j - tau];
         sum += delta * delta;
       }
       running += sum;

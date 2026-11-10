@@ -161,6 +161,64 @@ func TestTuneSpeedSetsHowFastTheNoteMoves(t *testing.T) {
 	}
 }
 
+// vibratoSaw is a sung note with vibrato: hz, swinging depth cents either way at 5.5 Hz.
+func vibratoSaw(hz, depth float64, n int) []float64 {
+	out := make([]float64, n)
+	phase := 0.0
+	for i := range out {
+		f := hz * math.Pow(2, depth/1200*math.Sin(2*math.Pi*5.5*float64(i)/Rate))
+		phase += 2 * math.Pi * f / Rate
+		for k := 1; float64(k)*f < 8000; k++ {
+			out[i] += 0.3 * math.Sin(float64(k)*phase) / float64(k)
+		}
+	}
+	return out
+}
+
+// wobble is how far, in cents (a standard deviation), the pitch of x's second half swings.
+func wobble(x []float64) float64 {
+	d := newDetector()
+	var c []float64
+	for i, v := range x {
+		d.push(v)
+		if d.updated && i > len(x)/2 && d.period > 0 {
+			c = append(c, cents(Rate/d.period, 220))
+		}
+	}
+	mean, sd := 0.0, 0.0
+	for _, v := range c {
+		mean += v / float64(len(c))
+	}
+	for _, v := range c {
+		sd += (v - mean) * (v - mean) / float64(len(c))
+	}
+	return math.Sqrt(sd)
+}
+
+// The robot sound is a dead straight pitch: at speed 100 a vibrato must come out flattened.
+// The correction has to land on the voice it was measured on; when it came 20 ms late (the
+// detector looked at the oldest part of its window), most of a vibrato came through, and at
+// middle speeds it came out wider than it went in.
+func TestTuneFlattensVibratoAtFullSpeed(t *testing.T) {
+	in := vibratoSaw(220, 60, 2*Rate)
+	sung := wobble(in)
+	for _, c := range []struct {
+		speed   float64
+		atMost  float64 // of the vibrato sung
+		purpose string
+	}{
+		{100, 0.5, "Robot flattens it"},
+		{65, 1.1, "Strong keeps it, no wider"},
+	} {
+		tu := newTuner()
+		tu.setTune(100, c.speed, 0)
+		got := wobble(process(tu, in))
+		if got > c.atMost*sung {
+			t.Errorf("speed %.0f: vibrato %.1f cents from %.1f sung, want at most %.0f%% (%s)", c.speed, got, sung, 100*c.atMost, c.purpose)
+		}
+	}
+}
+
 func TestTuneKeepsTheLevelAndTheDelay(t *testing.T) {
 	tu := newTuner()
 	tu.setTune(100, 100, 0)
@@ -418,7 +476,7 @@ func TestParamsMatchTheBrowser(t *testing.T) {
 		!near(p.BrightDb, want.BrightDb) || !near(p.DoubleMix, want.DoubleMix) {
 		t.Errorf("ParamsFor = %+v, want %+v", p, want)
 	}
-	if got := tuneParams(30, 50); !near(got.amount, 0.3) || !near(got.seconds, 0.4*0.25+0.005) {
+	if got := tuneParams(30, 50); !near(got.amount, 0.3) || !near(got.seconds, 0.4*0.25+0.001) {
 		t.Errorf("tuneParams(30, 50) = %+v", got)
 	}
 	if got := tuneParams(0, 100); got.amount != 0 {
@@ -496,6 +554,58 @@ func TestHowlGuard(t *testing.T) {
 	}
 	if feed(sine(2400, 2*Rate, 0.05)) {
 		t.Error("a quiet tone was called feedback")
+	}
+	// Clipping gives feedback odd harmonics; it is feedback still.
+	clipped := sine(600, 2*Rate, 3)
+	for i, v := range clipped {
+		clipped[i] = math.Max(-0.9, math.Min(0.9, v))
+	}
+	if !feed(clipped) {
+		t.Error("a clipped 600 Hz tone held for 2 s was not called feedback")
+	}
+	if !feed(sine(300, 2*Rate, 0.9)) {
+		t.Error("a loud 300 Hz tone held for 2 s was not called feedback")
+	}
+}
+
+// hum is a held note as a voice hums it: a little vibrato, harmonics falling as 1/h², so the
+// note itself holds over 90% of the energy, more than the guard's 70%.
+func hum(hz float64, n int, peak float64) []float64 {
+	x := make([]float64, n)
+	phase, top := 0.0, 0.0
+	for i := range x {
+		t := float64(i) / Rate
+		phase += 2 * math.Pi * hz * math.Pow(2, 30.0/1200*math.Sin(2*math.Pi*5.5*t)) / Rate
+		for h := 1; h <= 10; h++ {
+			x[i] += math.Sin(float64(h)*phase) / float64(h*h)
+		}
+		top = math.Max(top, math.Abs(x[i]))
+	}
+	for i := range x {
+		x[i] *= peak / top
+	}
+	return x
+}
+
+// A singer's long, loud "ooh" through a boosted mic used to be called feedback: it is one
+// narrow peak, loud, and it holds still. Its harmonics say it is a voice.
+func TestHowlGuardLetsABoostedHeldNoteBe(t *testing.T) {
+	for _, s := range []Settings{
+		{On: true, Volume: 100, Boost: 12},
+		{On: true, Volume: 100, Boost: 24, Tune: 100, Speed: 100}, // and pitch corrected
+	} {
+		for _, hz := range []float64{165, 220, 440} {
+			c := NewChain(ParamsFor(s))
+			x := hum(hz, 4*Rate, 0.15)
+			in := make([]float32, len(x))
+			for i, v := range x {
+				in[i] = float32(v)
+			}
+			c.Process(in, make([]float32, 2*len(x)))
+			if c.Howled() {
+				t.Errorf("a %.0f Hz hum boosted %d dB (tune %d) was called feedback", hz, s.Boost, s.Tune)
+			}
+		}
 	}
 }
 

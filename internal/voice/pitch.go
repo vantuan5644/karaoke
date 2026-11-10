@@ -18,7 +18,7 @@ const (
 	detectRate  = Rate / decimate
 	minHz       = 70.0
 	maxHz       = 800.0
-	yinWindow   = 512 // 32 ms at 16 kHz
+	yinWindow   = 256 // 16 ms at 16 kHz: short, so an estimate is of the voice as it is now
 	yinHop      = 80  // a fresh estimate every 5 ms
 	yinCutoff   = 0.15
 	quietRMS    = 0.003 // about -50 dBFS: anything quieter is not a note
@@ -81,9 +81,13 @@ func (d *detector) estimate() float64 {
 	if start+span > n {
 		copy(d.span[n-start:], d.buf[:start+span-n])
 	}
+	// The newest stretch is compared with the ones a lag earlier, so the estimate is of the
+	// voice as recent as it can be: the grains it corrects are only DelayMs behind, and a
+	// correction that lands late turns vibrato against itself.
 	x := d.span
+	newest := x[len(x)-yinWindow:]
 	energy := 0.0
-	for _, v := range x[:yinWindow] {
+	for _, v := range newest {
 		energy += v * v
 	}
 	if math.Sqrt(energy/yinWindow) < quietRMS {
@@ -94,8 +98,8 @@ func (d *detector) estimate() float64 {
 	running := 0.0
 	for tau := 1; tau <= d.maxLag; tau++ {
 		sum := 0.0
-		shifted := x[tau : tau+yinWindow]
-		for j, v := range x[:yinWindow] {
+		shifted := x[len(x)-yinWindow-tau : len(x)-tau]
+		for j, v := range newest {
 			delta := v - shifted[j]
 			sum += delta * delta
 		}
@@ -176,14 +180,15 @@ type tunePlan struct{ amount, seconds float64 }
 
 // tuneParams is the knobs' arithmetic, shared with the browser's copy (mic-core.js): Tune
 // is how much of the way to the note, Speed how quickly the voice gets there. Slow keeps
-// slides and vibrato; fast flattens them, and at 100 the voice jumps from note to note.
+// slides and vibrato; fast flattens them, and at 100 the voice jumps from note to note (a
+// 1 ms glide: any slower, and the correction lags a vibrato enough to leave most of it).
 func tuneParams(tune, speed float64) tunePlan {
 	s := math.Max(0, math.Min(100, tune)) / 100
 	if s == 0 {
 		return tunePlan{}
 	}
 	v := math.Max(0, math.Min(100, speed)) / 100
-	return tunePlan{amount: s, seconds: 0.4*(1-v)*(1-v) + 0.005}
+	return tunePlan{amount: s, seconds: 0.4*(1-v)*(1-v) + 0.001}
 }
 
 // allNotes is every semitone of the octave: bit 0 is C, bit 11 is B.

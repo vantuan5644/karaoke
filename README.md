@@ -97,6 +97,7 @@ uses: a high-pass filter for rumble and pops, a little EQ (less boom, more prese
 compressor, the karaoke echo, a reverb, and a limiter. **Echo** and **Reverb** are the two
 knobs that matter, with *Dry*, *KTV* and *Hall* as starting points. Phones get a mic card
 under the song for turning it on, setting levels and picking a preset mid-song.
+[FEATURES.MD](FEATURES.MD) walks through setting every knob for your voice.
 
 **Mic boost** (0 to 24 dB) is for a quiet mic: it raises the voice going in, before anything
 else, where **Mic volume** sets how loud it comes out. Sing your loudest and keep the level

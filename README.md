@@ -119,8 +119,10 @@ it from there:
 - **Notes** is which notes count. *Every semitone* pulls to the nearest one, whatever the song.
   *The song's key* pulls only to the song's own notes, so a note sung off goes to the nearest
   note in the key, never to one outside it: the server hears the key in the song's sound
-  (it needs **ffmpeg**; a YouTube song is downloaded for it, so that needs **yt-dlp** too). A
-  key picked by hand works without either. Both follow a key change.
+  (it needs **ffmpeg**; a YouTube song is downloaded for it, so that needs **yt-dlp** too, and
+  this only happens while the mic is on). A key picked by hand works without either. Both
+  follow a key change once the music has it: a video playing embedded keeps its own key until
+  its copy is downloaded, and Tune waits with it.
 
 While Tune is on, your voice comes back 8 ms later. The key is heard over the whole song, so a
 song that changes key part way (Bohemian Rhapsody) is pulled to one of its keys throughout:

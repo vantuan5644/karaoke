@@ -174,8 +174,15 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    Bohemian Rhapsody, which changes key, came out E♭ major: a whole-song key is a limit, so
    such a song is best sung with every semitone. A YouTube song is downloaded to be heard
    (the TV asks about the song playing and the next one, so the next is ready when it
-   starts); a song already playing embedded keeps playing embedded. Keys are cached per file
-   (path, size, modification time), and one song is heard at a time.
+   starts), and only while the mic is on, since hearing a YouTube song means downloading it; a
+   song already playing embedded keeps playing embedded, and Tune keeps its key until the
+   music changes key. Keys are cached per file by path and size: the download cache touches a
+   file's modification time each time it is used, which a review caught re-running ffmpeg on
+   every ask. One song is heard at a time, and a request that gives up waiting is told to ask
+   again. Settings saved by the one-knob version are carried over to the same sound (Tune
+   min(1, t/0.6) of the way, Speed 1 − √0.75·(1 − t)), and the server takes what a page leaves
+   out as the default rather than 0. The TV page never opens the mic before Start, even to
+   give it a new song's notes.
 
 ## Lyrics panel (done)
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULTS, HowlGuard, PRESETS, SCALES, TUNE_PRESETS, howlScore, impulse, keyName, latencyVerdict, majorNotes, medianMs,
   normalize, notesFor, params, scaleLabel, shiftNotes, tunePlan,
-  engineText, knobText,
+  commandChanges, commandSaid, engineText, knobText, upgrade,
 } from '../static/mic-core.js';
 
 test('normalize clamps and fills in', () => {
@@ -130,4 +130,32 @@ test('engineText says where the voice is processed', () => {
   assert.match(engineText({ native: true, tune: 50 }), /a few ms \(8 ms of it is Tune\)/);
   assert.match(engineText({ native: false, offered: true }), /Low latency cuts that/);
   assert.equal(engineText({ native: false, tune: 30 }), 'In the browser (8 ms of it is Tune).');
+});
+
+test('upgrade keeps the sound of settings saved before Speed', () => {
+  // One knob then: 100 snapped (the robot), 30 pulled half way and slowly.
+  assert.deepEqual(upgrade({ tune: 100, echo: 40 }), { tune: 100, speed: 100, echo: 40 });
+  const old = upgrade({ tune: 30 });
+  assert.equal(old.tune, 50);
+  const before = 0.3 * 0.7 ** 2 + 0.005;
+  assert.ok(Math.abs(tunePlan(old.tune, old.speed).seconds - before) < 0.01, 'the same glide');
+  // Settings with a Speed, or with Tune off, are this version's already.
+  assert.deepEqual(upgrade({ tune: 30, speed: 80 }), { tune: 30, speed: 80 });
+  assert.deepEqual(upgrade({ tune: 0 }), { tune: 0 });
+  assert.deepEqual(upgrade(), {});
+});
+
+test("phones' mic commands", () => {
+  const s = normalize({ tune: 40, speed: 50, boost: 6, scale: 'chromatic' });
+  assert.deepEqual(commandChanges('mic-boost', 2, s, true), { boost: 8 });
+  assert.deepEqual(commandChanges('mic-speed', -10, s, true), { speed: 40 });
+  assert.deepEqual(commandChanges('mic-tune-preset', 3, s, true), TUNE_PRESETS.robot);
+  assert.deepEqual(commandChanges('mic-scale', 0, s, true), { scale: 'song' });
+  assert.deepEqual(commandChanges('mic-scale', 0, s, false), { scale: 'chromatic' }, "no song's key without ffmpeg");
+  assert.deepEqual(commandChanges('mic-scale', 0, { ...s, scale: 'key-7' }, true), { scale: 'chromatic' });
+  assert.deepEqual(commandChanges('mic-volume', 10, s, true), { volume: 110, on: true });
+  assert.equal(commandChanges('mic-nope', 1, s, true), null);
+  assert.equal(commandSaid('mic-boost', 2, { ...s, boost: 8 }), 'Mic boost +8 dB');
+  assert.equal(commandSaid('mic-tune-preset', 1, s), 'Auto-tune: natural');
+  assert.equal(commandSaid('mic-scale', 0, { ...s, scale: 'song' }), "Auto-tune notes: The song's key");
 });

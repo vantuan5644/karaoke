@@ -10,7 +10,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, opts);
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((data && data.error) || `${res.status} ${res.statusText}`);
+  if (!res.ok) throw Object.assign(new Error((data && data.error) || `${res.status} ${res.statusText}`), { status: res.status });
   return data;
 }
 

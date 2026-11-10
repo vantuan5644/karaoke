@@ -9,7 +9,7 @@ const RETRY_MS = 3000;
 
 export class SongKeys {
   constructor({ onChange = () => {} } = {}) {
-    this.known = new Map(); // qid -> { key, pending, error, at }
+    this.known = new Map(); // qid -> { key, pending, error, retry, at }
     this.asking = new Set();
     this.onChange = onChange;
     this.entries = [];
@@ -24,8 +24,9 @@ export class SongKeys {
     for (const { qid } of this.entries) {
       const k = this.known.get(qid);
       if (this.asking.has(qid)) continue;
-      if (k?.pending) waiting = true;
-      if (k && !(k.pending && Date.now() - k.at >= RETRY_MS)) continue;
+      const again = k && (k.pending || k.retry); // still coming, or the asking itself failed
+      if (again) waiting = true;
+      if (k && !(again && Date.now() - k.at >= RETRY_MS)) continue;
       this.ask(qid);
     }
     clearTimeout(this.timer);
@@ -36,6 +37,7 @@ export class SongKeys {
   stop() {
     clearTimeout(this.timer);
     this.entries = [];
+    this.known.clear();
   }
 
   async ask(qid) {
@@ -44,12 +46,15 @@ export class SongKeys {
     try {
       answer = await api(`/api/songkey?qid=${encodeURIComponent(qid)}`);
     } catch (err) {
-      answer = { error: err.message };
+      // The server answered with what it couldn't do, or never answered (restarting, the
+      // network): only the second is worth asking again.
+      answer = { error: err.message, retry: !err.status };
     }
     this.asking.delete(qid);
     if (!this.entries.some((e) => e.qid === qid)) return; // gone from the queue meanwhile
-    this.known.set(qid, { key: answer.key || null, pending: Boolean(answer.pending), error: answer.error || '', at: Date.now() });
-    if (answer.pending) this.follow(this.entries); // keeps the retry going
+    const known = { key: answer.key || null, pending: Boolean(answer.pending), error: answer.error || '', retry: Boolean(answer.retry), at: Date.now() };
+    this.known.set(qid, known);
+    if (known.pending || known.retry) this.follow(this.entries); // keeps the retry going
     this.onChange(qid);
   }
 
@@ -65,32 +70,38 @@ export function shiftedKey(key, semitones) {
 }
 
 // keysWanted is the entries whose keys pitch correction needs (the song playing and the
-// next), or null when it isn't following the song.
+// next), or null when it isn't following the song. Each is heard from its sound, which for a
+// YouTube song means downloading it, so only while someone is singing through the mic.
 export function keysWanted(settings, state) {
-  if (settings.scale !== 'song' || !settings.tune || !state?.features?.keys) return null;
+  if (!settings.on || settings.scale !== 'song' || !settings.tune || !state?.features?.keys) return null;
   return [state.current, state.queue?.[0]];
 }
 
 // tuneNotes is what pitch correction pulls to now: the notes (12 bits, 0 for every
-// semitone), what the mic panel says about them, and the song's key as it sounds now.
-export function tuneNotes(settings, state, keys) {
+// semitone), what the mic panel says about them, and the song's key as it sounds. shift is
+// the key change the music has now, which can lag the one asked for: an embedded video
+// plays in its own key until its copy is downloaded.
+export function tuneNotes(settings, state, keys, shift = state?.current?.key || 0) {
   const cur = state?.current;
   const info = cur ? keys.get(cur.qid) : null;
   return {
-    notes: notesFor(settings.scale, info?.key, cur?.key || 0),
-    text: songKeyText({ scale: settings.scale, tune: settings.tune, hasKeys: Boolean(state?.features?.keys), cur, info }),
-    name: settings.scale === 'song' && info?.key ? shiftedKey(info.key, cur?.key).name : '',
+    notes: notesFor(settings.scale, info?.key, shift),
+    text: songKeyText({ on: settings.on, scale: settings.scale, tune: settings.tune, hasKeys: Boolean(state?.features?.keys), cur, info, shift }),
+    name: settings.scale === 'song' && info?.key ? shiftedKey(info.key, shift).name : '',
   };
 }
 
 // songKeyText says what pitch correction is pulling to, for the mic panel.
-export function songKeyText({ scale, tune, hasKeys, cur, info }) {
+export function songKeyText({ on = true, scale, tune, hasKeys, cur, info, shift = cur?.key || 0 }) {
   if (scale !== 'song') return '';
   if (!hasKeys) return "This server can't hear a song's key (it needs ffmpeg), so every semitone counts for now.";
   if (!tune) return "Turn Tune up to pull your voice to the song's notes.";
+  if (!on) return "The song's key is found while the mic is on.";
   if (!cur) return "The song's key is found when a song plays.";
-  if (!info || info.pending) return info?.pending ? 'Downloading the song to hear its key…' : "Listening for the song's key…";
-  if (!info.key) return `${info.error || 'No key found'} Every semitone counts for now.`;
-  if (cur.key) return `The song is in ${info.key.name}; with its key change, ${shiftedKey(info.key, cur.key).name}.`;
-  return `The song is in ${info.key.name}: Tune pulls to its notes.`;
+  if (!info || info.pending) return info?.pending ? 'Getting the song ready to hear its key…' : "Listening for the song's key…";
+  if (!info.key) return `${(info.error || 'No key found').replace(/\.?$/, '.')} Every semitone counts for now.`;
+  const name = info.key.name;
+  if (shift) return `The song is in ${name}; with its key change, ${shiftedKey(info.key, shift).name}.`;
+  if (cur.key) return `The song is in ${name}. Its key change to ${shiftedKey(info.key, cur.key).name} waits for the song's copy, and Tune with it.`;
+  return `The song is in ${name}: Tune pulls to its notes.`;
 }

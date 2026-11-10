@@ -132,6 +132,44 @@ export function tunePlan(tune, speed = DEFAULTS.speed, notes = 0) {
 // TUNE_DELAY_MS is what pitch correction adds while it is on (the Go engine's DelayMs).
 export const TUNE_DELAY_MS = 8;
 
+// upgrade carries settings saved before Tune had a Speed over to the same sound. One knob set
+// both then: t = tune/100 pulled min(1, t/0.6) of the way, gliding 0.3·(1 − t)² + 0.005 s.
+export function upgrade(saved = {}) {
+  if (saved.speed !== undefined || !(saved.tune > 0)) return saved;
+  const t = clamp(saved.tune, 0, 100) / 100;
+  return { ...saved, tune: Math.round(Math.min(1, t / 0.6) * 100), speed: Math.round((1 - Math.sqrt(0.75) * (1 - t)) * 100) };
+}
+
+// The phones' commands, by number: mic-preset 0..2 and mic-tune-preset 0..3.
+const PRESET_ORDER = ['dry', 'ktv', 'hall'];
+const TUNE_PRESET_ORDER = ['off', 'natural', 'strong', 'robot'];
+
+// commandChanges is what a phone's mic command changes in settings s (null for none it
+// knows); hasKeys says the server can hear a song's key.
+export function commandChanges(action, value, s, hasKeys) {
+  const knob = action.slice(4); // mic-warmth -> warmth
+  const changes = {
+    'mic-toggle': { on: !s.on },
+    'mic-volume': { volume: s.volume + value, on: true },
+    'mic-preset': PRESETS[PRESET_ORDER[value]] || {},
+    'mic-tune-preset': TUNE_PRESETS[TUNE_PRESET_ORDER[value]],
+    // The phone's Notes button: every semitone, or the song's own key.
+    'mic-scale': { scale: s.scale === 'chromatic' && hasKeys ? 'song' : 'chromatic' },
+  }[action];
+  if (changes) return changes;
+  return KNOBS[knob] ? { [knob]: s[knob] + value } : null;
+}
+
+// commandSaid is what the TV shows once a command has changed the settings to now.
+export function commandSaid(action, value, now) {
+  const knob = action.slice(4);
+  if (action === 'mic-toggle') return now.on ? 'Mic on' : 'Mic off';
+  if (action === 'mic-tune-preset') return `Auto-tune: ${TUNE_PRESET_ORDER[value]}`;
+  if (action === 'mic-scale') return `Auto-tune notes: ${scaleLabel(now.scale)}`;
+  if (KNOBS[knob] && !['volume', 'echo', 'reverb'].includes(knob)) return `${KNOBS[knob].label} ${knobText(knob, now[knob])}`;
+  return `Mic ${now.volume}% · echo ${now.echo} · reverb ${now.reverb}`;
+}
+
 // knobText is a knob's value as the panels show it.
 export function knobText(knob, v) {
   if (knob === 'volume') return `${v}%`;

@@ -71,6 +71,9 @@ func TestNativeMicFromThisComputer(t *testing.T) {
 	if resp.StatusCode != 200 || !st.Running || st.Volume != 120 || st.Tune != 40 || st.Warmth != 100 {
 		t.Fatalf("POST /api/mic: %d %s", resp.StatusCode, body)
 	}
+	if st.Speed != voice.Defaults.Speed || st.Echo != voice.Defaults.Echo {
+		t.Errorf("what a page leaves out should be the default, not 0: speed %d, echo %d", st.Speed, st.Echo)
+	}
 	resp, body = h.do("GET", "/api/mic/devices", "")
 	if resp.StatusCode != 200 || !json.Valid(body) || len(body) < 20 {
 		t.Fatalf("GET /api/mic/devices: %d %s", resp.StatusCode, body)

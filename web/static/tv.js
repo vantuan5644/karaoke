@@ -9,7 +9,9 @@ import { CDGView } from './tv-cdg.js';
 import { Finder } from './tv-search.js';
 import { PictureDelay } from './tv-delay.js';
 import { audioContext } from './audio.js';
-import { KNOBS, PRESETS, SCALES, TUNE_PRESETS, engineText, knobText, latencyVerdict, normalize, scaleLabel } from './mic-core.js';
+import {
+  KNOBS, PRESETS, SCALES, TUNE_PRESETS, commandChanges, commandSaid, engineText, knobText, latencyVerdict, normalize, scaleLabel, upgrade,
+} from './mic-core.js';
 import { SongKeys, keysWanted, tuneNotes } from './tv-songkey.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -48,6 +50,7 @@ function setMode(mode) {
   document.body.classList.toggle('mode-embed', mode === 'embed');
   document.body.classList.toggle('mode-file', mode === 'file');
   if (mode !== 'file' && pictureDelay.active) syncPicture();
+  if (tv.started) syncNotes(); // the key the music is in may have changed with the player
 }
 
 function later(name, ms, fn) {
@@ -339,6 +342,7 @@ function shiftKey(cur) {
   keyShift.set(want)
     .then(syncPicture)
     .catch((err) => osd(`Key change failed: ${err.message}`));
+  syncNotes(); // set() has taken the new key already: pitch correction moves with it
 }
 
 // The picture waits for the sound. Once Web Audio has a file's sound (from its first key
@@ -493,7 +497,7 @@ function status() {
       state = 'buffering';
     }
   }
-  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started, mic: { ...mic.status(), songKey: tuneNotes(mic.settings, tv.state, songKeys).name }, lyrics: lyricsPanel.open };
+  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started, mic: { ...mic.status(), songKey: songNotes().name }, lyrics: lyricsPanel.open };
 }
 
 function report() {
@@ -521,7 +525,7 @@ const micHandlers = {
   onHowl: () => osd('Feedback! Mic turned down'),
 };
 let mic = new Mic(micHandlers);
-mic.settings = normalize(store('mic', {}));
+mic.settings = normalize(upgrade(store('mic', {})));
 let nativeMic = { native: false, here: false }; // what the server offers this page
 const micReady = pickMic();
 
@@ -551,7 +555,6 @@ function micUnsupported() {
 
 // --- Pitch correction to the song's own key -----------------------------------------
 const songKeys = new SongKeys({ onChange: () => syncNotes() });
-const TUNE_PRESET_ORDER = ['off', 'natural', 'strong', 'robot'];
 
 // followSongKey keeps the song's key known while pitch correction follows it.
 function followSongKey() {
@@ -561,11 +564,28 @@ function followSongKey() {
   syncNotes();
 }
 
+// soundingKey is the key change the music has now: an embedded video can't change key, a
+// file's is the key shifter's, and a song yet to start will start in the one asked for.
+function soundingKey() {
+  if (tv.mode === 'embed') return 0;
+  if (tv.mode === 'file') return keyShift.semitones || 0;
+  return tv.state?.current?.key || 0;
+}
+
+function songNotes() {
+  return tuneNotes(mic.settings, tv.state, songKeys, soundingKey());
+}
+
 // syncNotes gives pitch correction the notes of the song playing, in its key now.
 function syncNotes() {
-  const now = tuneNotes(mic.settings, tv.state, songKeys);
+  const now = songNotes();
   if (now.notes !== mic.settings.notes) {
-    mic.set({ notes: now.notes }); // which calls micChanged
+    // set() would open a mic that is on; before Start, only the click may do that.
+    if (tv.started) mic.set({ notes: now.notes }); // which calls micChanged
+    else {
+      mic.settings = { ...mic.settings, notes: now.notes };
+      micChanged();
+    }
     return;
   }
   $('#mic-songkey').textContent = now.text;
@@ -587,7 +607,7 @@ function micChanged() {
     const p = TUNE_PRESETS[b.dataset.tunePreset];
     b.classList.toggle('on', s.tune === p.tune && (!p.tune || s.speed === p.speed));
   }
-  $('#mic-songkey').textContent = tuneNotes(s, tv.state, songKeys).text;
+  $('#mic-songkey').textContent = songNotes().text;
   $('#mic-lowLatency-row').hidden = !(nativeMic.native && nativeMic.here);
   $('#mic-lowLatency').checked = s.lowLatency;
   $('#mic-engine').textContent = engineText({ native: mic.native, engineMs: mic.engineMs, tune: s.tune, offered: nativeMic.native && nativeMic.here });
@@ -596,7 +616,7 @@ function micChanged() {
   $('#mic-error').textContent = mic.error;
   if (mic.latencyMs !== null) $('#mic-latency').textContent = `Round trip ${latencyVerdict(mic.latencyMs)}`;
   reportSoon();
-  const follow = `${s.scale}|${s.tune > 0}`;
+  const follow = `${s.on}|${s.scale}|${s.tune > 0}`;
   if (follow !== tv.tuneFollows) {
     tv.tuneFollows = follow;
     followSongKey(); // the notes to pull to may have changed
@@ -604,25 +624,8 @@ function micChanged() {
 }
 
 function micCommand(action, value) {
-  const s = mic.settings;
-  const knob = action.slice(4); // mic-warmth -> warmth
-  const changes = {
-    'mic-toggle': { on: !s.on },
-    'mic-volume': { volume: s.volume + value, on: true },
-    'mic-preset': PRESETS[['dry', 'ktv', 'hall'][value]] || {},
-    'mic-tune-preset': TUNE_PRESETS[TUNE_PRESET_ORDER[value]],
-    // The phone's Notes button: every semitone, or the song's own key.
-    'mic-scale': { scale: s.scale === 'chromatic' && tv.state?.features?.keys ? 'song' : 'chromatic' },
-  }[action] || (KNOBS[knob] && { [knob]: s[knob] + value });
-  if (!changes) return;
-  mic.set(changes).then(() => {
-    const now = mic.settings;
-    if (action === 'mic-toggle') osd(now.on ? 'Mic on' : 'Mic off');
-    else if (action === 'mic-tune-preset') osd(`Auto-tune: ${TUNE_PRESET_ORDER[value]}`);
-    else if (action === 'mic-scale') osd(`Auto-tune notes: ${scaleLabel(now.scale)}`);
-    else if (KNOBS[knob] && !['volume', 'echo', 'reverb'].includes(knob)) osd(`${KNOBS[knob].label} ${knobText(knob, now[knob])}`);
-    else osd(`Mic ${now.volume}% · echo ${now.echo} · reverb ${now.reverb}`);
-  });
+  const changes = commandChanges(action, value, mic.settings, Boolean(tv.state?.features?.keys));
+  if (changes) mic.set(changes).then(() => osd(commandSaid(action, value, mic.settings)));
 }
 
 async function fillDevices() {

@@ -52,7 +52,7 @@ func (s *Server) setMic(w http.ResponseWriter, r *http.Request) {
 	if !s.micAllowed(w, r) {
 		return
 	}
-	var settings voice.Settings
+	settings := voice.Defaults // what a page leaves out (an older page has no Speed) is the default
 	if !readJSON(w, r, &settings) {
 		return
 	}

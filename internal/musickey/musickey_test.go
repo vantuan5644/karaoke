@@ -3,6 +3,7 @@ package musickey
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"math"
 	"math/cmplx"
 	"math/rand"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // notes is a set of pitch classes as Key.Notes has them.
@@ -146,7 +148,11 @@ func TestFinderHearsAFileOnce(t *testing.T) {
 	if err != nil || k.Name != "D major" {
 		t.Fatalf("Key = %+v, %v; want D major", k, err)
 	}
-	f.FFmpeg = "/nonexistent" // a second ask must not run ffmpeg again
+	f.FFmpeg = "/nonexistent" // a second ask must not run ffmpeg again,
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(song, later, later); err != nil { // even after the cache touched the file
+		t.Fatal(err)
+	}
 	if again, err := f.Key(context.Background(), song); err != nil || again != k {
 		t.Errorf("asked again: %+v, %v", again, err)
 	}
@@ -161,4 +167,15 @@ func TestFinderHearsAFileOnce(t *testing.T) {
 	if _, err := f.Key(context.Background(), silent); err != ErrNoMusic {
 		t.Errorf("silence: %v, want ErrNoMusic", err)
 	}
+
+	// Waiting for another file to be heard gives up when the caller does.
+	f.busy <- struct{}{}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	other := filepath.Join(dir, "other.mp3")
+	os.WriteFile(other, []byte("not heard yet"), 0o644)
+	if _, err := f.Key(ctx, other); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("waiting past the deadline: %v", err)
+	}
+	<-f.busy
 }

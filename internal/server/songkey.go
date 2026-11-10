@@ -20,7 +20,7 @@ type KeyFinder interface {
 type songKeyAnswer struct {
 	QID     string        `json:"qid"`
 	Key     *musickey.Key `json:"key,omitempty"`
-	Pending bool          `json:"pending,omitempty"` // the song is downloading so it can be heard: ask again
+	Pending bool          `json:"pending,omitempty"` // the song is downloading, or waiting its turn to be heard: ask again
 	Error   string        `json:"error,omitempty"`   // why there is no key
 }
 
@@ -51,6 +51,8 @@ func (s *Server) songKey(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		k, err := s.cfg.Keys.Key(ctx, path)
 		switch {
+		case errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled):
+			ans.Pending = true // other songs were being heard first: ask again
 		case errors.Is(err, musickey.ErrNoMusic):
 			ans.Error = "There is no music in it to hear a key in."
 		case err != nil:

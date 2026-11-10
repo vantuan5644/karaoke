@@ -26,7 +26,7 @@ type Finder struct {
 	mu      sync.Mutex
 	known   map[string]Key
 	working map[string]chan struct{} // files being heard now, closed when done
-	busy    sync.Mutex               // one file at a time: it takes a core for a second or two
+	busy    chan struct{}            // one file at a time: it takes a core for a second or two
 }
 
 // Key returns a file's key, hearing it the first time.
@@ -35,7 +35,9 @@ func (f *Finder) Key(ctx context.Context, path string) (Key, error) {
 	if err != nil {
 		return Key{}, err
 	}
-	id := path + "|" + strconv.FormatInt(info.Size(), 10) + "|" + info.ModTime().UTC().Format(time.RFC3339Nano)
+	// A file is known by its path and size, not its modification time: the download cache
+	// touches a file each time it is used, to keep the songs in use.
+	id := path + "|" + strconv.FormatInt(info.Size(), 10)
 	for {
 		f.mu.Lock()
 		if k, ok := f.known[id]; ok {
@@ -45,7 +47,7 @@ func (f *Finder) Key(ctx context.Context, path string) (Key, error) {
 		wait, running := f.working[id]
 		if !running {
 			if f.working == nil {
-				f.working, f.known = map[string]chan struct{}{}, map[string]Key{}
+				f.working, f.known, f.busy = map[string]chan struct{}{}, map[string]Key{}, make(chan struct{}, 1)
 			}
 			done := make(chan struct{})
 			f.working[id] = done
@@ -69,14 +71,23 @@ func (f *Finder) Key(ctx context.Context, path string) (Key, error) {
 	}
 }
 
+// hear runs ffmpeg on a file, once the files before it are done; an error is ctx's when
+// the caller gave up waiting.
 func (f *Finder) hear(ctx context.Context, path string) (Key, error) {
-	f.busy.Lock()
-	defer f.busy.Unlock()
+	select {
+	case f.busy <- struct{}{}:
+		defer func() { <-f.busy }()
+	case <-ctx.Done():
+		return Key{}, ctx.Err()
+	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, f.FFmpeg, "-nostdin", "-v", "error", "-i", path,
 		"-t", strconv.Itoa(int(listen.Seconds())), "-vn", "-ac", "1", "-ar", strconv.Itoa(Rate), "-f", "f32le", "pipe:1")
 	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return Key{}, ctx.Err()
+	}
 	if err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) && len(exit.Stderr) > 0 {

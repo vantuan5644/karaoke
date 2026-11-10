@@ -113,7 +113,7 @@ func TestMatchTriesLooseQueriesOnlyWhenThePlainOnesFindNothing(t *testing.T) {
 }
 
 func TestScore(t *testing.T) {
-	title := tokens("queen bohemian rhapsody")
+	title := wordsOf("queen bohemian rhapsody")
 	song := Track{Track: "Bohemian Rhapsody", Artist: "Queen", Duration: 355, Lyrics: "Is this the real life?"}
 	queen := Track{Track: "Queen", Artist: "Someone", Duration: 200, Lyrics: "la la"}
 	remix := Track{Track: "Bohemian Rhapsody (DJ Remix Edit)", Artist: "Queen", Duration: 355, Lyrics: "Is this the real life?"}
@@ -133,11 +133,54 @@ func TestScore(t *testing.T) {
 	if score(instrumental, title, 375, false) != 0 || score(empty, title, 375, false) != 0 {
 		t.Error("a track with no words scored")
 	}
-	vn := tokens("em cua ngay hom qua")
+	vn := wordsOf("em cua ngay hom qua")
 	typed := Track{Track: "Em Cua Ngay Hom Qua", Artist: "Son Tung M-TP", Lyrics: "Lieu con mai ben nhau"}
 	accented := Track{Track: "Em Của Ngày Hôm Qua", Artist: "Sơn Tùng M-TP", Lyrics: "Liệu rằng chia tay"}
 	if score(typed, vn, 0, true) >= score(accented, vn, 0, true) {
 		t.Error("lyrics without accents beat lyrics with them, for an accented title")
+	}
+}
+
+func TestAOneWordSongNeedsMoreOfTheTitleThanItsName(t *testing.T) {
+	gm := Track{Track: "GM", Artist: "Booba", Lyrics: "x"}
+	if s := score(gm, wordsOf("khong 2", "gm", "remix", "phi long"), 0, true); s != 0 {
+		t.Errorf("a song named after a stray word scored %.2f", s)
+	}
+	yesterday := Track{Track: "Yesterday", Artist: "The Beatles", Lyrics: "x"}
+	if s := score(yesterday, wordsOf("the beatles", "yesterday"), 0, false); s < goodEnough {
+		t.Errorf("Yesterday by The Beatles scored %.2f", s)
+	}
+	hello := Track{Track: "Hello", Artist: "Adele", Lyrics: "x"}
+	if s := score(hello, wordsOf("hello"), 0, false); s < minScore {
+		t.Errorf("Hello scored %.2f for a title that is only its name", s)
+	}
+}
+
+func TestANumberAfterTheNameMakesAnotherSong(t *testing.T) {
+	sequel := wordsOf("ke say tinh 2", "quoc thien", "live")
+	first := Track{Track: "Kẻ Say Tình (Live At Lululola)", Artist: "Quốc Thiên", Lyrics: "x"}
+	second := Track{Track: "Kẻ Say Tình 2", Artist: "Quốc Thiên", Lyrics: "x"}
+	if s := score(first, sequel, 0, true); s != 0 {
+		t.Errorf("Kẻ Say Tình scored %.2f for Kẻ Say Tình 2", s)
+	}
+	if s := score(second, sequel, 0, true); s < minScore {
+		t.Errorf("Kẻ Say Tình 2 scored %.2f for itself", s)
+	}
+	if s := score(second, wordsOf("ke say tinh", "quoc thien"), 0, true); s != 0 {
+		t.Errorf("Kẻ Say Tình 2 scored %.2f for Kẻ Say Tình", s)
+	}
+	part := Track{Track: "Kẻ Say Tình (Part 2)", Artist: "Quốc Thiên", Lyrics: "x"}
+	if s := score(part, sequel, 0, true); s == 0 {
+		t.Error("a track with the number elsewhere in its name was turned down")
+	}
+	// Numbers that are not after a word of the song's name don't count.
+	sugar := Track{Track: "Sugar", Artist: "Maroon 5", Lyrics: "x"}
+	if s := score(sugar, wordsOf("maroon 5", "sugar"), 0, false); s < minScore {
+		t.Errorf("Maroon 5's Sugar scored %.2f", s)
+	}
+	year := Track{Track: "Hotel California (1976)", Artist: "Eagles", Lyrics: "x"}
+	if s := score(year, wordsOf("eagles", "hotel california"), 0, false); s == 0 {
+		t.Error("a year in the track's name turned it down")
 	}
 }
 
@@ -239,6 +282,21 @@ func TestFindLoosensTheWordsOnlyWhenNothingMatchesAsTyped(t *testing.T) {
 	asked := len(f.queries)
 	if got, err := c.Find(context.Background(), "Anh Đau"); err != nil || len(got) != 2 || got[0].ID != 6 || len(f.queries) != asked+1 {
 		t.Errorf("a search with results was changed: %+v, %v, %q", got, err, f.queries[asked:])
+	}
+}
+
+func TestMatchFindsNothingRatherThanTheSongBeforeASequel(t *testing.T) {
+	c, _ := newFake(t, map[string][]record{
+		"ke say tinh": {
+			{ID: 8, TrackName: "Kẻ Say Tình (Live At Lululola)", ArtistName: "Quốc Thiên", Duration: 367, PlainLyrics: "x"},
+			{ID: 9, TrackName: "Kẻ Say Tình (Edm)", ArtistName: "Quốc Thiên", Duration: 343, PlainLyrics: "x"},
+		},
+	})
+	if got, ok, err := c.Match(context.Background(), "[KARAOKE] Kẻ Say Tình 2 - Quốc Thiên | Beat Live Version", 259); ok || err != nil {
+		t.Errorf("Match = %+v, %v, %v; want no match", got, ok, err)
+	}
+	if got, err := c.Find(context.Background(), "Kẻ Say Tình 2"); err != nil || len(got) != 0 {
+		t.Errorf("Find = %+v, %v; want nothing", got, err)
 	}
 }
 

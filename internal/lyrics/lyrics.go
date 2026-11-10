@@ -187,7 +187,7 @@ type scored struct {
 // stops once the best of them scores enough, or at the end of a round of queries once one
 // would do. Best first; a tie goes to the one found first.
 func (c *Client) look(ctx context.Context, title string, parts []string, rounds [][]string, duration, enough float64) ([]scored, error) {
-	words := tokens(strings.Join(parts, " "))
+	words := wordsOf(parts...)
 	accented := hasAccents(title)
 	var out []scored
 	seen := map[int]bool{}

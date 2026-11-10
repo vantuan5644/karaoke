@@ -178,6 +178,18 @@ box starts from the cleaned title as written ("Anh Đau Từ Khúc Em Đi - Qu�
 by hand that finds nothing is loosened the same way. The 12 misses joined the live test: 96 of
 96, at 147 LRCLIB requests against 151 before.
 
+Then "[KARAOKE] Kẻ Say Tình 2 - Quốc Thiên | Beat Live Version" showed the lyrics of Kẻ Say Tình.
+LRCLIB has no Kẻ Say Tình 2 under any spelling we tried; the title with words dropped from its
+end ("ke say tinh") found the first song, whose name is 3 of its 4 words in the title, enough to
+pass. (The code before the morning's change did the same.) Now a small number after a word of
+the name ("tinh 2") must be in both the title and the track, either way round: Summer of 69,
+Song 2, Mambo No. 5, Maroon 5's Sugar and 7 Years still match. Checking that turned up "Karaoke
+Không 2 Tone Nữ Gm ..." matching "GM" by Booba, a one-word song named after a stray word (the
+key), like "Moi" and "Gió" earlier: a track's name and artist must now account for two of the
+title's words (or all, for a one-word title). A song of "-" in the live list means LRCLIB has
+no record of it, so any match is wrong; with the Kẻ Say Tình 2, Không 2 and number titles, 109
+of 109.
+
 ## Other sources (after that)
 
 - *Library* (done): `-library DIR`. `internal/library` walks the folders (skipping hidden and

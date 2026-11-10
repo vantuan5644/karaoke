@@ -112,6 +112,42 @@ func Clean(title string) string {
 	return strings.Join(texts, " - ")
 }
 
+// wording is a title's or a track's words, and each small number with the word before it
+// ("tinh 2"): a number after a song's name makes it another song, Kẻ Say Tình 2 and not
+// Kẻ Say Tình.
+type wording struct {
+	words   map[string]bool
+	numbers map[string]string // the word before a number, and the number
+}
+
+var smallNumber = regexp.MustCompile(`^\d{1,2}$`)
+
+// wordsOf reads each text on its own, so a number does not attach to the end of the text
+// before it.
+func wordsOf(texts ...string) wording {
+	w := wording{words: map[string]bool{}, numbers: map[string]string{}}
+	for _, text := range texts {
+		list := strings.Fields(punctuation.ReplaceAllString(Fold(text), " "))
+		for i, word := range list {
+			w.words[word] = true
+			if i > 0 && smallNumber.MatchString(word) {
+				w.numbers[list[i-1]] = word
+			}
+		}
+	}
+	return w
+}
+
+// renumbered says whether a has a number after a word that b has without that number.
+func renumbered(a, b wording) bool {
+	for before, n := range a.numbers {
+		if b.words[before] && !b.words[n] {
+			return true
+		}
+	}
+	return false
+}
+
 func tokens(s string) map[string]bool {
 	set := map[string]bool{}
 	for _, w := range strings.Fields(punctuation.ReplaceAllString(Fold(s), " ")) {
@@ -125,13 +161,18 @@ func covered(a, b map[string]bool) float64 {
 	if len(a) == 0 {
 		return 0
 	}
+	return float64(shared(a, b)) / float64(len(a))
+}
+
+// shared counts a's words that are also in b.
+func shared(a, b map[string]bool) int {
 	n := 0
 	for w := range a {
 		if b[w] {
 			n++
 		}
 	}
-	return float64(n) / float64(len(a))
+	return n
 }
 
 // Below minTrack, the title doesn't name the track; at goodEnough a search stops looking.
@@ -148,17 +189,23 @@ const (
 // "Queen - Bohemian Rhapsody". Length counts a little: karaoke versions run a few seconds to
 // half a minute off the record. And when the title has accents (Vietnamese, say), lyrics
 // someone typed without them lose a little: they are hard to sing from.
-func score(t Track, title map[string]bool, duration float64, accented bool) float64 {
+// Two things rule a track out, as another song: a number after the name that the title and
+// the track disagree on (Kẻ Say Tình 2 is not Kẻ Say Tình), and a name and artist that
+// account for only one of the title's words (a song named after a stray word: "Gm", a key).
+func score(t Track, title wording, duration float64, accented bool) float64 {
 	if t.Instrumental || strings.TrimSpace(t.Lyrics) == "" {
 		return 0
 	}
-	track := tokens(t.Track)
-	named := covered(track, title)
-	if named < minTrack {
+	track := wordsOf(t.Track)
+	named := covered(track.words, title.words)
+	if named < minTrack || renumbered(title, track) || renumbered(track, title) {
 		return 0
 	}
 	both := tokens(t.Track + " " + t.Artist)
-	explained := covered(title, both)
+	if shared(title.words, both) < min(2, len(title.words)) {
+		return 0
+	}
+	explained := covered(title.words, both)
 	length := 0.0
 	if duration > 0 && t.Duration > 0 {
 		d := duration - t.Duration

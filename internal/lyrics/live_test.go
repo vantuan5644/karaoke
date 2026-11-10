@@ -36,6 +36,10 @@ func TestLiveMatchesRealKaraokeTitles(t *testing.T) {
 		switch {
 		case err != nil:
 			t.Errorf("%s: %v", title, err)
+		case want == "-" && ok:
+			t.Logf("WRONG %-70s  -> %s / %s, but LRCLIB has no such song", title, got.Track, got.Artist)
+		case want == "-":
+			right++
 		case !ok:
 			t.Logf("MISS  %-70s  parts=%q", title, Parts(title))
 		case !strings.Contains(Fold(got.Track), want):

@@ -1,5 +1,6 @@
 # Real karaoke video titles from YouTube search (2026-11-10): the song each one is, its
-# length in seconds, and the title. Used by the live matching test (LRCLIB_LIVE=1).
+# length in seconds, and the title. Used by the live matching test (LRCLIB_LIVE=1). A song of
+# "-" is one LRCLIB has no record of (checked 2026-11-10), so any match is wrong.
 
 bohemian rhapsody	375	Queen - Bohemian Rhapsody (Karaoke Version)
 bohemian rhapsody	346	Queen - Bohemian Rhapsody (Karaoke)
@@ -97,3 +98,16 @@ song gio	256	Karaoke Sóng gió - K-ICM x JACK (Guitar Solo Beat) | Thiện Trun
 song gio	232	Sóng Gió Karaoke Tone Nữ ( Abm ) Nhạc Sống Rumba Karaoke Lâm Organ  -   Beat Mới
 song gio	232	Karaoke Sóng Gió Nhạc Trẻ Rumba Tone Nữ ( Abm ) Beat Phối Hay 2026
 duyen phan	391	Karaoke Duyên Phận Tone Nam Nhạc Sống Cực Chuẩn 2020 | Trọng Hiếu
+-	259	[KARAOKE] Kẻ Say Tình 2 - Quốc Thiên | Beat Live Version
+-	259	KARAOKE | Kẻ Say Tình 2 - Quốc Thiên | (Lead by Lê Cương, ACV), 89G Team | Beat Nam Chuẩn
+-	256	Karaoke Kẻ Say Tình 2 Tone Nam R&B Version - LD Media Music
+-	259	Kẻ say tình 2 karaoke hạ tone
+-	274	Karaoke KẺ SAY TÌNH 2 - Beat Chuẩn Tone Nữ Dễ Hát  (R&B Version) - LD Media Music R&B
+-	260	Karaoke Không 2 Tone Nữ Gm Nhạc Sống Remix - Karaoke Phi Long
+-	251	Karaoke | Không 2 | Trizzie Phương Trinh | FullHD
+ke say tinh	300	KARAOKE | Kẻ Say Tình - Quốc Thiên | Beat Tone Nam Chuẩn
+summer of 69	215	Summer Of 69 - Bryan Adams (Karaoke version)
+song 2	122	Blur - Song 2 (Karaoke Version)
+mambo no	220	Mambo No. 5 - Lou Bega | Karaoke Version | KaraFun
+sugar	235	Maroon 5 - Sugar (Karaoke Version)
+7 years	237	Lukas Graham - 7 Years (Karaoke Version)

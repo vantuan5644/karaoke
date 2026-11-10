@@ -148,8 +148,10 @@ the video's title ("Bohemian Rhapsody - Queen | Karaoke Version | KaraFun" becom
 rhapsody queen"), searches, and picks the record whose name the title contains, preferring the
 song over remixes, a length close to the video's, and accented lyrics for an accented title.
 When nothing fits, it tries the title with one word left out, so an uploader's misspelling
-("Anh Đau Từ Khúc Em Đi" for "Anh Đau Từ Lúc Em Đi") still finds the song. On 96 real karaoke
-titles (English and Vietnamese) it picked the right song every time. When it is wrong,
+("Anh Đau Từ Khúc Em Đi" for "Anh Đau Từ Lúc Em Đi") still finds the song. A number after the
+name makes another song, so "Kẻ Say Tình 2" never gets the words of "Kẻ Say Tình"; with no
+record of the song, the panel says so rather than show another one. On 109 real karaoke titles
+(English and Vietnamese) it picked the right song, or rightly none, every time. When it is wrong,
 **Wrong lyrics?** on the phone searches LRCLIB by hand, starting from the cleaned title with
 its accents; a search that finds nothing is loosened the same way. *No lyrics* turns them off
 for that song. With `-lyrics=false` the server never contacts LRCLIB.

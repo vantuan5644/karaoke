@@ -1,5 +1,6 @@
 // The phone remote: search, queue a song under your name, and drive the TV.
 import { api, connect, el, fmtTime, icon, save, store } from './live.js';
+import { initLyrics } from './remote-lyrics.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = { state: null, player: null, singer: store('singer', ''), more: '', query: '' };
@@ -57,8 +58,9 @@ function showTab(name) {
   for (const b of document.querySelectorAll('.tabs button')) {
     b.setAttribute('aria-selected', String(b.dataset.tab === name));
   }
-  for (const tab of ['search', 'queue', 'history']) $(`#tab-${tab}`).hidden = tab !== name;
+  for (const tab of ['search', 'queue', 'history', 'lyrics']) $(`#tab-${tab}`).hidden = tab !== name;
   save('tab', name);
+  if (name === 'lyrics') lyricsTab?.render(true);
 }
 
 // --- Search --------------------------------------------------------------
@@ -309,9 +311,13 @@ function render() {
   renderNow();
   renderQueue();
   renderHistory();
+  lyricsTab?.render();
 }
 
+let lyricsTab = null;
+
 function init() {
+  lyricsTab = initLyrics({ view, attempt, command, toast });
   showSinger();
   $('#open-settings').append(icon('gear'));
   $('#singer').onclick = askName;
@@ -336,7 +342,7 @@ function init() {
   renderNow();
   connect({
     state: (s) => { view.state = s; if (s.player) view.player = s.player; render(); },
-    player: (p) => { view.player = p; renderNow(); },
+    player: (p) => { view.player = p; renderNow(); lyricsTab.player(); },
     online: (up) => document.body.classList.toggle('offline', !up),
   });
 }

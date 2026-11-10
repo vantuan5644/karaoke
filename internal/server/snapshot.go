@@ -30,6 +30,7 @@ type Play struct {
 // Features says which optional parts this server has.
 type Features struct {
 	Download bool `json:"download"` // yt-dlp is there, so videos that refuse to embed still play
+	Lyrics   bool `json:"lyrics"`   // lyrics can be looked up
 }
 
 const historyShown = 30
@@ -59,7 +60,7 @@ func (s *Server) snapshot() Snapshot {
 }
 
 func (s *Server) features() Features {
-	return Features{Download: s.cfg.Downloader != nil}
+	return Features{Download: s.cfg.Downloader != nil, Lyrics: s.cfg.Lyrics != nil}
 }
 
 // playFor picks how a song plays. A downloaded copy always wins (it starts at once and has

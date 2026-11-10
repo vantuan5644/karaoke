@@ -37,9 +37,10 @@ type Config struct {
 	Room       *room.Room
 	YouTube    Searcher
 	Downloader Downloader
-	Web        fs.FS    // index.html, tv.html and static/
-	URLs       []string // addresses phones can reach this server at, best first
-	AllowHosts []string // host names to answer to besides addresses and home names (see hosts.go)
+	Lyrics     LyricsSource // nil when lyrics are off
+	Web        fs.FS        // index.html, tv.html and static/
+	URLs       []string     // addresses phones can reach this server at, best first
+	AllowHosts []string     // host names to answer to besides addresses and home names (see hosts.go)
 	Version    string
 }
 
@@ -115,6 +116,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/player/status", s.playerStatus)
 	mux.HandleFunc("POST /api/player/embed-failed", s.embedFailed)
 	mux.HandleFunc("POST /api/settings", s.setSettings)
+	mux.HandleFunc("GET /api/lyrics", s.lyricsFor)
+	mux.HandleFunc("GET /api/lyrics/search", s.lyricsSearch)
+	mux.HandleFunc("POST /api/queue/{qid}/lyrics", s.setLyrics)
 
 	mux.HandleFunc("GET /media/yt/{id}", s.youtubeFile)
 	return securityHeaders(knownHosts(s.cfg.AllowHosts, sameOriginWrites(mux)))

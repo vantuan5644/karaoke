@@ -17,6 +17,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/vantuan5644/karaoke/internal/lyrics"
 	"github.com/vantuan5644/karaoke/internal/media"
 	"github.com/vantuan5644/karaoke/internal/room"
 	"github.com/vantuan5644/karaoke/internal/youtube"
@@ -112,7 +113,7 @@ func newHarness(t *testing.T, withDownloads bool) *harness {
 	}
 	h := &harness{t: t, yt: &fakeYouTube{}}
 	cfg := Config{
-		Room: rm, YouTube: h.yt, Version: "test", URLs: []string{"http://192.168.1.5:8765"},
+		Room: rm, YouTube: h.yt, Lyrics: fakeLyrics{}, Version: "test", URLs: []string{"http://192.168.1.5:8765"},
 		Web: fstest.MapFS{
 			"index.html":       {Data: []byte("<h1>remote</h1>")},
 			"tv.html":          {Data: []byte("<h1>tv</h1>")},
@@ -501,5 +502,85 @@ func TestWantedDownloadsWhatWontEmbedAndKeepsEverythingStillToPlay(t *testing.T)
 	st.Settings.AlwaysDownload = true
 	if download, _ := wanted(st); fmt.Sprint(download) != "[playing0001 blocked0001 embeds00001]" {
 		t.Errorf("download with alwaysDownload = %v", download)
+	}
+}
+
+type fakeLyrics struct{}
+
+func (fakeLyrics) Match(ctx context.Context, title string, duration float64) (lyrics.Track, bool, error) {
+	if strings.Contains(title, "Bohemian") {
+		return lyrics.Track{ID: 7, Track: "Bohemian Rhapsody", Artist: "Queen", Lyrics: "Is this the real life?\nIs this just fantasy?"}, true, nil
+	}
+	return lyrics.Track{}, false, nil
+}
+
+func (fakeLyrics) Get(ctx context.Context, id int) (lyrics.Track, error) {
+	if id == 42 {
+		return lyrics.Track{ID: 42, Track: "Bohemian Rhapsody (Live)", Artist: "Queen", Lyrics: "Mama"}, nil
+	}
+	return lyrics.Track{}, lyrics.ErrNotFound
+}
+
+func (fakeLyrics) Search(ctx context.Context, q string) ([]lyrics.Track, error) {
+	return []lyrics.Track{
+		{ID: 42, Track: "Bohemian Rhapsody (Live)", Artist: "Queen", Lyrics: "\nMama\njust killed a man\nput a gun"},
+		{ID: 43, Track: "Bohemian Rhapsody", Artist: "Queen", Instrumental: true},
+	}, nil
+}
+
+func TestLyrics(t *testing.T) {
+	h := newHarness(t, false)
+	resp, data := h.do("POST", "/api/queue", `{"song":{"source":"youtube","videoId":"embedOK0001","title":"Queen - Bohemian Rhapsody (Karaoke)","embeddable":true},"singer":"an"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("enqueue = %d %s", resp.StatusCode, data)
+	}
+	var added enqueueResponse
+	json.Unmarshal(data, &added)
+	qid := added.Entry.QID
+	get := func() lyricsAnswer {
+		t.Helper()
+		resp, data := h.do("GET", "/api/lyrics?qid="+qid, "")
+		if resp.StatusCode != 200 {
+			t.Fatalf("lyrics = %d %s", resp.StatusCode, data)
+		}
+		var a lyricsAnswer
+		json.Unmarshal(data, &a)
+		return a
+	}
+	if a := get(); a.Track == nil || a.Track.ID != 7 || a.Chosen || a.Query != "queen bohemian rhapsody" {
+		t.Errorf("automatic match = %+v", a)
+	}
+	if resp, _ := h.do("POST", "/api/queue/"+qid+"/lyrics", `{"id":42}`); resp.StatusCode != 204 {
+		t.Errorf("choose = %d", resp.StatusCode)
+	}
+	if a := get(); a.Track == nil || a.Track.ID != 42 || !a.Chosen {
+		t.Errorf("chosen = %+v", a)
+	}
+	if h.state().Current.Song.LyricsID != 42 {
+		t.Error("the choice is not in the room's state, so the TV would not hear of it")
+	}
+	h.do("POST", "/api/queue/"+qid+"/lyrics", `{"id":-1}`)
+	if a := get(); !a.Off || a.Track != nil {
+		t.Errorf("turned off = %+v", a)
+	}
+	for body, want := range map[string]int{`{}`: 400, `{"id":-5}`: 400} {
+		if resp, _ := h.do("POST", "/api/queue/"+qid+"/lyrics", body); resp.StatusCode != want {
+			t.Errorf("POST %s = %d, want %d", body, resp.StatusCode, want)
+		}
+	}
+	if resp, _ := h.do("POST", "/api/queue/nope/lyrics", `{"id":1}`); resp.StatusCode != 404 {
+		t.Errorf("unknown entry = %d", resp.StatusCode)
+	}
+	if resp, _ := h.do("GET", "/api/lyrics?qid=nope", ""); resp.StatusCode != 404 {
+		t.Errorf("lyrics for an unknown entry = %d", resp.StatusCode)
+	}
+	resp, data = h.do("GET", "/api/lyrics/search?q=bohemian", "")
+	var found struct{ Results []lyricsCandidate }
+	json.Unmarshal(data, &found)
+	if resp.StatusCode != 200 || len(found.Results) != 1 || found.Results[0].Preview != "Mama / just killed a man" || found.Results[0].Lines != 4 {
+		t.Errorf("search = %d %+v", resp.StatusCode, found.Results)
+	}
+	if !h.state().Features.Lyrics {
+		t.Error("features.lyrics is off")
 	}
 }

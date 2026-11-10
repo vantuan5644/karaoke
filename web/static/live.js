@@ -117,3 +117,9 @@ export function icon(name, label) {
   wrap.append(svg, Object.assign(document.createElement('span'), { className: 'sr', textContent: label }));
   return wrap;
 }
+
+// lyricLines turns plain lyrics into one paragraph per line sung; the blank line between
+// verses becomes a gap.
+export function lyricLines(text) {
+  return String(text || '').split('\n').map((line) => (line.trim() ? el('p', { text: line.trim() }) : el('p', { class: 'gap' })));
+}

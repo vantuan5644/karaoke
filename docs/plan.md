@@ -90,10 +90,28 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
 4. **Hardware mics** stay the zero-latency option: a mixer or karaoke speaker, with the
    computer's audio into its line-in.
 
+## Lyrics panel (done)
+
+Asked for on 2026-11-10: "allow matching lyrics, as a side panel, only lyric, no need time
+syncing, sometimes its better for singing." `internal/lyrics` matches a video title to an LRCLIB
+record; the TV shows it in a right-hand panel (`web/static/tv-lyrics.js`), the phone in a tab
+with a search to pick another record (`web/static/remote-lyrics.js`). The pick is stored on the
+queue entry (`Song.LyricsID`: an LRCLIB id, 0 automatic, -1 none), so every screen follows it.
+
+Measured: LRCLIB's search returns full plain lyrics in each result (one request per song), finds
+Vietnamese songs from unaccented queries, and needs every word to match (one stray channel word
+took 20 hits to 3 or 0), so the matcher retries with the title's parts and with words dropped
+from its end. It answered 429 to about 150 requests in 5 s, so the client spaces requests
+250 ms apart and honours Retry-After. On 84 real karaoke titles from our own search (14
+songs, 5 Vietnamese) it matched the right song 84 times; some LRCLIB records are typed without
+Vietnamese accents, so accented titles prefer accented lyrics. Fitting at 1080p: Bohemian
+Rhapsody (50 lines) fits whole in two columns at half the screen; Shape of You (92 lines) and
+Vietnamese songs, whose long lines wrap, fall back to one column that scrolls, with a fade at
+the bottom while there is more.
+
 ## Other sources (after that)
 
 - *Library*: a folder of karaoke files (MP4/WebM, MP3+CDG pairs), searched accent-insensitively
   ("nang am" finds "Nắng Ấm"); CDG drawn on a canvas by our own decoder.
-- *Lyrics*: any song with synced lyrics on LRCLIB (tested: 20 hits with `syncedLyrics` for
-  "bohemian rhapsody queen" in 0.26 s), played over a YouTube backing track of matching length,
-  or over the song itself with the vocals removed.
+- *Lyrics songs*: any song with lyrics on LRCLIB, played over a YouTube backing track of
+  matching length, or over the song itself with the vocals removed.

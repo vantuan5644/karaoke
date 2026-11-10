@@ -24,6 +24,7 @@
     <button type="button" role="tab" data-tab="search" aria-selected="true">Search</button>
     <button type="button" role="tab" data-tab="queue" aria-selected="false">Queue <span id="queue-count" class="count"></span></button>
     <button type="button" role="tab" data-tab="history" aria-selected="false">Sung</button>
+    <button type="button" role="tab" data-tab="lyrics" aria-selected="false">Lyrics</button>
   </nav>
 
   <main>
@@ -42,6 +43,34 @@
       <ul id="queue" class="list"></ul>
       <p id="queue-empty" class="hint">Nothing queued after this song.</p>
       <button id="clear" class="ghost wide danger" type="button" hidden>Clear the queue</button>
+    </section>
+
+    <section id="tab-lyrics" role="tabpanel" hidden>
+      <div class="lyrics-head">
+        <div class="meta">
+          <div id="lyrics-title" class="title"></div>
+          <div id="lyrics-by" class="sub"></div>
+        </div>
+        <label class="switch"><input type="checkbox" id="lyrics-tv"><span></span>On TV</label>
+      </div>
+      <div class="lyrics-actions">
+        <button id="lyrics-change" class="ghost" type="button">Wrong lyrics?</button>
+        <span class="grow"></span>
+        <button id="lyrics-up" class="ghost act" type="button" aria-label="Scroll the TV's lyrics up">▲</button>
+        <button id="lyrics-down" class="ghost act" type="button" aria-label="Scroll the TV's lyrics down">▼</button>
+      </div>
+      <div id="lyrics-find" class="lyrics-find" hidden>
+        <form id="lyrics-form" class="searchbar" role="search">
+          <input id="lyrics-q" type="search" placeholder="Song and artist" autocomplete="off" enterkeyhint="search" aria-label="Song and artist">
+          <button type="submit" class="primary">Find</button>
+        </form>
+        <div class="lyrics-actions">
+          <button id="lyrics-auto" class="ghost" type="button">Automatic</button>
+          <button id="lyrics-none" class="ghost" type="button">No lyrics</button>
+        </div>
+        <ul id="lyrics-results" class="list"></ul>
+      </div>
+      <div id="lyrics-text" class="lyrics-text"></div>
     </section>
 
     <section id="tab-history" role="tabpanel" hidden>

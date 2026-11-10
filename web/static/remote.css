@@ -151,3 +151,16 @@ dialog input:not([type="checkbox"]) {
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.bad { border-color: var(--err); }
 .offline .now { border-color: var(--err); }
+
+/* Lyrics tab */
+.lyrics-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.lyrics-head .title { font-weight: 700; }
+.lyrics-head .sub { color: var(--muted); font-size: .85rem; }
+.lyrics-actions { display: flex; align-items: center; gap: 6px; margin: 6px 0 10px; }
+.lyrics-actions .grow { flex: 1; }
+.lyrics-actions .act { width: 40px; padding: 6px 0; }
+.lyrics-find { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin-bottom: 12px; }
+.lyrics-find .preview { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lyrics-text { font-size: 1.1rem; line-height: 1.45; padding-bottom: 24px; }
+.lyrics-text p { margin: 0; }
+.lyrics-text p.gap { height: .8em; }

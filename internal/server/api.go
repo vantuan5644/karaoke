@@ -26,6 +26,7 @@ type PlayerStatus struct {
 	Muted    bool       `json:"muted"`
 	Started  bool       `json:"started"` // the TV has had the click browsers ask for before sound
 	Mic      *MicStatus `json:"mic,omitempty"`
+	Lyrics   bool       `json:"lyrics"` // the lyrics panel is open
 }
 
 // MicStatus is the TV's mic, so phones can show and nudge it.
@@ -48,6 +49,7 @@ var (
 		"toggle": true, "play": true, "pause": true, "restart": true,
 		"seek": true, "volume": true, "mute": true,
 		"mic-toggle": true, "mic-volume": true, "mic-echo": true, "mic-reverb": true, "mic-preset": true,
+		"lyrics-toggle": true, "lyrics-scroll": true,
 	}
 	playerStates = map[string]bool{
 		"playing": true, "paused": true, "buffering": true, "waiting": true, "idle": true, "error": true,

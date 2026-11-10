@@ -13,6 +13,9 @@ songs from their phones. Nothing to install on phones or the TV, no account, no 
   skip, pause, volume.
 - **The TV page** shows an "up next" card with the singer's name between songs, the song full
   screen, and who is next near the end.
+- **Lyrics beside the video**, plain text with no timing, found on [LRCLIB](https://lrclib.net)
+  from the video's title (Vietnamese included), with a pick-your-own search on the phone when
+  the match is wrong.
 - **One binary** for Linux, macOS and Windows, with the web UI inside it, or a Docker image.
 
 ## Run it
@@ -63,6 +66,7 @@ set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose
 | `-ytdlp-args` | | Extra yt-dlp arguments, quoted like a shell: `--cookies "C:\My Files\cookies.txt"`. |
 | `-max-height` | `720` | Tallest video to download. |
 | `-region` | | YouTube search region, e.g. `US`, `VN`. |
+| `-lyrics` | `true` | Look lyrics up on lrclib.net; `-lyrics=false` never asks it. |
 | `-public-url` | | The address the QR code shows. Its host name is also allowed (below). |
 | `-allow-host` | | More host names to answer to, comma-separated, e.g. `karaoke.example.com`. |
 | `-tls-cert`, `-tls-key` | | Serve HTTPS. |
@@ -93,6 +97,21 @@ card under the song for turning it on, setting levels and picking a preset mid-s
 - For no delay at all, use a mixer or a karaoke speaker with the mics plugged into it, and the
   computer's sound into its line-in.
 
+## Lyrics
+
+Press **L** on the TV (or the *On TV* switch in the phone's **Lyrics** tab) for a panel with
+the song's words beside the video. They are plain text with no timing, sized so the whole song
+fits when it can (one column, then two, then a wider panel); a longer song scrolls with
+**Page Up/Down** or the phone's arrows. The phone's Lyrics tab shows the same words.
+
+They come from LRCLIB, a free, open lyrics database. The server takes the karaoke dressing off
+the video's title ("Bohemian Rhapsody - Queen | Karaoke Version | KaraFun" becomes "bohemian
+rhapsody queen"), searches, and picks the record whose name the title contains, preferring the
+song over remixes, a length close to the video's, and accented lyrics for an accented title.
+On 84 real karaoke titles (English and Vietnamese) it picked the right song every time. When it
+is wrong, **Wrong lyrics?** on the phone searches LRCLIB by hand; *No lyrics* turns them off
+for that song. With `-lyrics=false` the server never contacts LRCLIB.
+
 ## How playback is chosen
 
 For each song the server decides, and the TV follows:
@@ -122,6 +141,7 @@ make dist     # binaries for every platform in dist/
 ```
 
 Layout: `internal/room` (queue and its saved state), `internal/youtube` (keyless search and the
-embed check), `internal/media` (yt-dlp downloads and the cache), `internal/server` (HTTP API,
+embed check), `internal/media` (yt-dlp downloads and the cache), `internal/lyrics` (LRCLIB and
+matching titles to songs; `LRCLIB_LIVE=1 go test ./internal/lyrics` checks the real titles), `internal/server` (HTTP API,
 live events over SSE, QR codes), `web/` (the phone remote `index.html` and the TV `tv.html`,
 plain ES modules, no build step). Design notes and measurements: `docs/plan.md`.

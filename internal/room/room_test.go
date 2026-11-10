@@ -1,6 +1,7 @@
 package room
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -217,5 +218,31 @@ func TestAFailedSaveKeepsTheChangeAndReportsNoError(t *testing.T) {
 	}
 	if s := r.State(); s.Current == nil || s.Current.Song.Title != "A" || notified != 1 {
 		t.Errorf("current = %+v, notified %d times; want the change kept and announced", s.Current, notified)
+	}
+}
+
+func TestSetLyrics(t *testing.T) {
+	r, _ := testRoom(t)
+	cur, _ := r.Add(song("A"), "an", false)
+	next, _ := r.Add(song("B"), "bo", false)
+	if err := r.SetLyrics(cur.QID, 42); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetLyrics(next.QID, NoLyrics); err != nil {
+		t.Fatal(err)
+	}
+	s := r.State()
+	if s.Current.Song.LyricsID != 42 || s.Queue[0].Song.LyricsID != NoLyrics {
+		t.Errorf("lyrics ids = %d, %d", s.Current.Song.LyricsID, s.Queue[0].Song.LyricsID)
+	}
+	v := s.Version
+	if err := r.SetLyrics(cur.QID, 42); err != nil || r.State().Version != v {
+		t.Errorf("setting the same id again: %v, version %d -> %d", err, v, r.State().Version)
+	}
+	if err := r.SetLyrics("nope", 1); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown entry: %v", err)
+	}
+	if err := r.SetLyrics(cur.QID, -2); !errors.Is(err, ErrNotFound) {
+		t.Errorf("id -2: %v", err)
 	}
 }

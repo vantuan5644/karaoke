@@ -2,6 +2,7 @@
 // server's own copy, shows "up next" between songs, and tells the server when one ends.
 import { api, connect, fmtTime, icon, save, store } from './live.js';
 import { Mic } from './mic.js';
+import { LyricsPanel } from './tv-lyrics.js';
 import { PRESETS, latencyVerdict, normalize } from './mic-core.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -176,6 +177,7 @@ function applyVolume() {
 function onState(state) {
   tv.state = state;
   route();
+  lyricsPanel.sync(state);
 }
 
 function route() {
@@ -359,6 +361,14 @@ function onCommand({ action, value }) {
     micCommand(action, value);
     return;
   }
+  if (action === 'lyrics-toggle') {
+    toggleLyrics();
+    return;
+  }
+  if (action === 'lyrics-scroll') {
+    lyricsPanel.scroll(value);
+    return;
+  }
   const player = active();
   if (!player) return;
   if (action === 'seek') {
@@ -385,7 +395,7 @@ function status() {
       state = 'buffering';
     }
   }
-  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started, mic: mic.status() };
+  return { qid: tv.qid || '', state, position, duration, volume: tv.volume, muted: tv.muted, started: tv.started, mic: mic.status(), lyrics: lyricsPanel.open };
 }
 
 function report() {
@@ -497,6 +507,16 @@ function initMicPanel() {
   micChanged();
 }
 
+// --- Lyrics -------------------------------------------------------------------------
+const lyricsPanel = new LyricsPanel($('#lyrics'), { onChange: () => reportSoon() });
+
+function toggleLyrics() {
+  lyricsPanel.setOpen(!lyricsPanel.open);
+  save('lyrics', lyricsPanel.open);
+  lyricsPanel.sync(tv.state);
+  osd(lyricsPanel.open ? 'Lyrics on' : 'Lyrics off');
+}
+
 // --- Start, keys, cursor ------------------------------------------------------------
 function start() {
   if (tv.started) return;
@@ -525,7 +545,8 @@ document.addEventListener('keydown', (e) => {
     ' ': () => onCommand({ action: 'toggle' }), k: () => onCommand({ action: 'toggle' }),
     ArrowRight: () => onCommand({ action: 'seek', value: 10 }), ArrowLeft: () => onCommand({ action: 'seek', value: -10 }),
     ArrowUp: () => onCommand({ action: 'volume', value: 5 }), ArrowDown: () => onCommand({ action: 'volume', value: -5 }),
-    m: () => onCommand({ action: 'mute' }), f: toggleFullscreen, v: toggleMicPanel,
+    m: () => onCommand({ action: 'mute' }), f: toggleFullscreen, v: toggleMicPanel, l: toggleLyrics,
+    PageDown: () => lyricsPanel.scroll(1), PageUp: () => lyricsPanel.scroll(-1),
     n: () => tv.state?.current && finish(tv.state.current.qid),
   };
   const run = keys[e.key] || keys[e.key.toLowerCase()];
@@ -542,6 +563,7 @@ document.addEventListener('mousemove', () => {
 async function init() {
   $('#start-button').onclick = start;
   initMicPanel();
+  if (store('lyrics', false)) lyricsPanel.setOpen(true);
   setPhase('idle');
   try {
     const info = await api('/api/info');
@@ -561,4 +583,5 @@ init();
 // For the console: what the TV thinks it is doing.
 window.karaokeTV = tv;
 window.karaokeMic = mic;
+window.karaokeLyrics = lyricsPanel;
 window.fmtTime = fmtTime;

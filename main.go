@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vantuan5644/karaoke/internal/lyrics"
 	"github.com/vantuan5644/karaoke/internal/media"
 	"github.com/vantuan5644/karaoke/internal/room"
 	"github.com/vantuan5644/karaoke/internal/server"
@@ -41,6 +42,7 @@ type options struct {
 	region    string
 	publicURL string
 	allowHost string
+	lyrics    bool
 	tlsCert   string
 	tlsKey    string
 	open      bool
@@ -64,6 +66,7 @@ func parseFlags() options {
 	flag.IntVar(&o.maxHeight, "max-height", 720, "tallest video to download, in pixels")
 	flag.StringVar(&o.region, "region", "", "two-letter region for YouTube search, e.g. US or VN (default: YouTube guesses)")
 	flag.StringVar(&o.publicURL, "public-url", "", "the address the TV's QR code shows, if not this machine's LAN address")
+	flag.BoolVar(&o.lyrics, "lyrics", true, "look songs' lyrics up on lrclib.net for the TV's lyrics panel (-lyrics=false: never ask it)")
 	flag.StringVar(&o.allowHost, "allow-host", "", "more host names to answer to, comma-separated (addresses, localhost, bare machine names, .local/.lan/.home.arpa/.ts.net and -public-url's always work)")
 	flag.StringVar(&o.tlsCert, "tls-cert", "", "serve HTTPS with this certificate (the TV page needs HTTPS for a mic, unless it is on localhost)")
 	flag.StringVar(&o.tlsKey, "tls-key", "", "the key for -tls-cert")
@@ -100,6 +103,9 @@ func run(o options) error {
 	yt.Region = strings.ToUpper(o.region)
 
 	cfg := server.Config{Room: rm, YouTube: yt, Web: web.Files, Version: version}
+	if o.lyrics {
+		cfg.Lyrics = lyrics.New("karaoke/" + version + " (self-hosted)")
+	}
 	// Downloads can report progress before the server exists, from their own goroutines.
 	var live atomic.Pointer[server.Server]
 	dl, err := newDownloader(o, func() {

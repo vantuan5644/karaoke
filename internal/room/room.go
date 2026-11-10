@@ -143,6 +143,42 @@ func (r *Room) Add(song Song, singer string, next bool) (Entry, error) {
 	return entry, err
 }
 
+// NoLyrics, as a LyricsID, means the singers chose to see no lyrics for the song.
+const NoLyrics = -1
+
+// SetLyrics picks the lyrics shown for an entry playing or queued: an LRCLIB id, 0 to go back
+// to the automatic match, or NoLyrics.
+func (r *Room) SetLyrics(qid string, id int) error {
+	if id < NoLyrics {
+		return ErrNotFound
+	}
+	return r.change(func() error {
+		set := func(e *Entry) error {
+			if e.Song.LyricsID == id {
+				return errStale
+			}
+			e.Song.LyricsID = id
+			return nil
+		}
+		if r.current != nil && r.current.QID == qid {
+			c := *r.current
+			err := set(&c)
+			r.current = &c
+			return err
+		}
+		for i, e := range r.queue {
+			if e.QID == qid {
+				queue := append([]Entry(nil), r.queue...)
+				err := set(&e)
+				queue[i] = e
+				r.queue = queue
+				return err
+			}
+		}
+		return ErrNotFound
+	})
+}
+
 // Remove takes an upcoming entry out of the queue. Removing the one playing skips it.
 func (r *Room) Remove(qid string) error {
 	return r.change(func() error {

@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -39,6 +40,7 @@ type options struct {
 	maxHeight int
 	region    string
 	publicURL string
+	allowHost string
 	tlsCert   string
 	tlsKey    string
 	open      bool
@@ -58,10 +60,11 @@ func parseFlags() options {
 	flag.StringVar(&o.cacheDir, "cache", defaultDir(os.UserCacheDir), "folder for downloaded videos")
 	flag.Float64Var(&o.cacheGB, "cache-gb", 20, "largest the download cache grows, in GB (0: no limit)")
 	flag.StringVar(&o.ytdlp, "ytdlp", "yt-dlp", `yt-dlp to download videos that refuse to embed; "off" to play embedded videos only`)
-	flag.StringVar(&o.ytdlpArgs, "ytdlp-args", "", "extra yt-dlp arguments, space-separated (e.g. --cookies-from-browser firefox)")
+	flag.StringVar(&o.ytdlpArgs, "ytdlp-args", "", `extra yt-dlp arguments, quoted like a shell (e.g. --cookies "C:\My Files\cookies.txt")`)
 	flag.IntVar(&o.maxHeight, "max-height", 720, "tallest video to download, in pixels")
 	flag.StringVar(&o.region, "region", "", "two-letter region for YouTube search, e.g. US or VN (default: YouTube guesses)")
 	flag.StringVar(&o.publicURL, "public-url", "", "the address the TV's QR code shows, if not this machine's LAN address")
+	flag.StringVar(&o.allowHost, "allow-host", "", "more host names to answer to, comma-separated (addresses, localhost, bare machine names, .local/.lan/.home.arpa/.ts.net and -public-url's always work)")
 	flag.StringVar(&o.tlsCert, "tls-cert", "", "serve HTTPS with this certificate (the TV page needs HTTPS for a mic, unless it is on localhost)")
 	flag.StringVar(&o.tlsKey, "tls-key", "", "the key for -tls-cert")
 	flag.BoolVar(&o.open, "open", false, "open the TV page in the default browser once the server is up")
@@ -119,6 +122,10 @@ func run(o options) error {
 	port := listener.Addr().(*net.TCPAddr).Port
 	secure := o.tlsCert != ""
 	cfg.URLs = append(publicURLs(o.publicURL), server.LocalURLs(port, secure)...)
+	cfg.AllowHosts = strings.Split(o.allowHost, ",")
+	if u, err := url.Parse(o.publicURL); err == nil && u.Host != "" {
+		cfg.AllowHosts = append(cfg.AllowHosts, u.Host)
+	}
 	srv := server.New(cfg)
 	live.Store(srv)
 
@@ -179,7 +186,10 @@ func newDownloader(o options, onChange func()) (*media.Downloader, error) {
 		log.Printf("yt-dlp not found (%v): only videos that embed will play; install yt-dlp to play the rest", err)
 		return nil, nil
 	}
-	args := strings.Fields(o.ytdlpArgs)
+	args, err := splitArgs(o.ytdlpArgs)
+	if err != nil {
+		return nil, fmt.Errorf("-ytdlp-args: %w", err)
+	}
 	if !strings.Contains(o.ytdlpArgs, "--js-runtimes") {
 		if _, err := exec.LookPath("deno"); err != nil {
 			if node, err := exec.LookPath("node"); err == nil {
@@ -214,4 +224,41 @@ func openBrowser(url string) {
 	if err := cmd.Start(); err != nil {
 		log.Printf("open a browser at %s (%v)", url, err)
 	}
+}
+
+// splitArgs splits a command line the way a shell would for the simple cases: spaces separate
+// arguments, and single or double quotes keep spaces inside one. Backslashes are plain
+// characters, so Windows paths need no doubling.
+func splitArgs(s string) ([]string, error) {
+	var args []string
+	var cur strings.Builder
+	inArg, quote := false, rune(0)
+	for _, c := range s {
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else {
+				cur.WriteRune(c)
+			}
+		case c == '"' || c == '\'':
+			quote, inArg = c, true
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			if inArg {
+				args = append(args, cur.String())
+				cur.Reset()
+				inArg = false
+			}
+		default:
+			cur.WriteRune(c)
+			inArg = true
+		}
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unclosed %c quote", quote)
+	}
+	if inArg {
+		args = append(args, cur.String())
+	}
+	return args, nil
 }

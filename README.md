@@ -60,10 +60,11 @@ set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose
 | `-cache` | user cache dir | Where downloaded videos go. |
 | `-cache-gb` | `20` | Cache size; the least recently played videos go first. |
 | `-ytdlp` | `yt-dlp` | Path to yt-dlp, or `off`. |
-| `-ytdlp-args` | | Extra yt-dlp arguments, e.g. `--cookies-from-browser firefox`. |
+| `-ytdlp-args` | | Extra yt-dlp arguments, quoted like a shell: `--cookies "C:\My Files\cookies.txt"`. |
 | `-max-height` | `720` | Tallest video to download. |
 | `-region` | | YouTube search region, e.g. `US`, `VN`. |
-| `-public-url` | | The address the QR code shows. |
+| `-public-url` | | The address the QR code shows. Its host name is also allowed (below). |
+| `-allow-host` | | More host names to answer to, comma-separated, e.g. `karaoke.example.com`. |
 | `-tls-cert`, `-tls-key` | | Serve HTTPS. |
 
 Settings on the phone (gear icon): **Download every song** plays everything from the server's
@@ -106,8 +107,11 @@ For each song the server decides, and the TV follows:
 
 The server has no accounts: anyone who can reach it can queue and skip, which is the point at
 a party. Keep it on your home network (or a VPN such as Tailscale), not the open internet.
-Writes from other websites are refused (`Sec-Fetch-Site`), and every request body is
-validated. Downloads are for playing at home; respect YouTube's terms and the rights holders.
+Other websites' pages can't use it either: writes must be JSON (which a cross-site page can't
+send without permission the server never gives), no page can frame it, and requests that name
+a host the server doesn't know are refused, which stops DNS rebinding. Addresses, `localhost`,
+bare machine names and home or VPN names (`.local`, `.lan`, `.home.arpa`, `.ts.net`) always
+work; add any other name with `-allow-host`. Every request body is validated. Downloads are for playing at home; respect YouTube's terms and the rights holders.
 
 ## Develop
 

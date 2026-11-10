@@ -3,7 +3,9 @@ package media
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -40,6 +42,13 @@ func fakeYtdlp(mode string, args []string) int {
 		fmt.Fprintln(os.Stderr, "ERROR: [youtube] "+id+": Video unavailable")
 		return 1
 	case "hang":
+		time.Sleep(time.Minute)
+		return 1
+	case "orphan":
+		// Like yt-dlp's standalone build: the work happens in a child that shares stdout.
+		child := exec.Command("sleep", "60")
+		child.Stdout = os.Stdout
+		child.Start()
 		time.Sleep(time.Minute)
 		return 1
 	case "nofile":
@@ -97,7 +106,7 @@ func TestDownloadsWhatIsWanted(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "args.log")
 	t.Setenv("FAKE_YTDLP_LOG", log)
 	d, changes := newTest(t, "ok", Config{Args: []string{"--js-runtimes", "node"}})
-	d.Want([]string{"aaaaaaaaaaa"})
+	d.Want([]string{"aaaaaaaaaaa"}, nil)
 	waitFor(t, d, "aaaaaaaaaaa", "ready")
 	path, ok := d.Path("aaaaaaaaaaa")
 	if !ok || filepath.Base(path) != "aaaaaaaaaaa.mp4" {
@@ -121,7 +130,7 @@ func TestFailureKeepsYtdlpsReasonAndIsNotRetriedAtOnce(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "args.log")
 	t.Setenv("FAKE_YTDLP_LOG", log)
 	d, _ := newTest(t, "fail", Config{Attempts: 3})
-	d.Want([]string{"bbbbbbbbbbb"})
+	d.Want([]string{"bbbbbbbbbbb"}, nil)
 	s := waitFor(t, d, "bbbbbbbbbbb", "failed")
 	if !strings.Contains(s.Error, "Video unavailable") {
 		t.Errorf("error = %q, want yt-dlp's reason", s.Error)
@@ -129,7 +138,7 @@ func TestFailureKeepsYtdlpsReasonAndIsNotRetriedAtOnce(t *testing.T) {
 	if runs, _ := os.ReadFile(log); strings.Count(string(runs), "\n") != 3 {
 		t.Errorf("yt-dlp ran %d times, want 3 tries", strings.Count(string(runs), "\n"))
 	}
-	d.Want([]string{"bbbbbbbbbbb"})
+	d.Want([]string{"bbbbbbbbbbb"}, nil)
 	if got := d.Status("bbbbbbbbbbb").State; got != "failed" {
 		t.Errorf("wanting it again right away gave %q, want it left failed", got)
 	}
@@ -137,7 +146,7 @@ func TestFailureKeepsYtdlpsReasonAndIsNotRetriedAtOnce(t *testing.T) {
 
 func TestNoFileIsAFailure(t *testing.T) {
 	d, _ := newTest(t, "nofile", Config{})
-	d.Want([]string{"ccccccccccc"})
+	d.Want([]string{"ccccccccccc"}, nil)
 	if s := waitFor(t, d, "ccccccccccc", "failed"); !strings.Contains(s.Error, "without a video file") {
 		t.Errorf("error = %q", s.Error)
 	}
@@ -145,12 +154,12 @@ func TestNoFileIsAFailure(t *testing.T) {
 
 func TestQueuesBeyondParallelAndDropsWhatIsNoLongerWanted(t *testing.T) {
 	d, _ := newTest(t, "hang", Config{Parallel: 1})
-	d.Want([]string{"running0001", "queued00001", "queued00002"})
+	d.Want([]string{"running0001", "queued00001", "queued00002"}, nil)
 	waitFor(t, d, "running0001", "downloading")
 	if got := d.Status("queued00001").State; got != "queued" {
 		t.Fatalf("second video = %q, want queued", got)
 	}
-	d.Want([]string{"running0001", "queued00002"})
+	d.Want([]string{"running0001", "queued00002"}, nil)
 	if got := d.Status("queued00001").State; got != "" {
 		t.Errorf("a video no longer wanted is still %q", got)
 	}
@@ -161,7 +170,7 @@ func TestQueuesBeyondParallelAndDropsWhatIsNoLongerWanted(t *testing.T) {
 
 func TestTimeoutStopsADownload(t *testing.T) {
 	d, _ := newTest(t, "hang", Config{Timeout: 200 * time.Millisecond, Attempts: 1})
-	d.Want([]string{"slowvideo01"})
+	d.Want([]string{"slowvideo01"}, nil)
 	if s := waitFor(t, d, "slowvideo01", "failed"); !strings.Contains(s.Error, "stopped") {
 		t.Errorf("error = %q", s.Error)
 	}
@@ -195,12 +204,77 @@ func TestTrimEvictsTheOldestUnwantedFile(t *testing.T) {
 	}
 	// Room for two files: fetching a third must evict the oldest that is not wanted.
 	d, _ := newTest(t, "ok", Config{Dir: dir, MaxBytes: 2000})
-	d.Want([]string{"old00000001", "new00000001"})
+	d.Want([]string{"old00000001", "new00000001"}, nil)
 	waitFor(t, d, "new00000001", "ready")
 	if d.Status("old00000002").State != "" {
 		t.Error("the unwanted old file was kept")
 	}
 	if d.Status("old00000001").State != "ready" {
 		t.Error("a wanted file was evicted")
+	}
+}
+
+func TestTrimKeepsWhatTheRoomMayStillPlay(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-time.Hour)
+	for i, id := range []string{"playing0001", "old00000002"} {
+		p := filepath.Join(dir, id+".mp4")
+		os.WriteFile(p, []byte(strings.Repeat("o", 1000)), 0o644)
+		at := old.Add(time.Duration(i) * time.Minute)
+		os.Chtimes(p, at, at)
+	}
+	// playing0001 is the oldest and not wanted for download (it embeds), but it is playing.
+	d, _ := newTest(t, "ok", Config{Dir: dir, MaxBytes: 2000})
+	d.Want([]string{"new00000001"}, []string{"playing0001"})
+	waitFor(t, d, "new00000001", "ready")
+	if d.Status("playing0001").State != "ready" {
+		t.Error("the file playing was evicted")
+	}
+	if d.Status("old00000002").State != "" {
+		t.Error("the file nobody needs was kept")
+	}
+}
+
+func TestARunningDownloadNoLongerWantedGivesUpItsSlot(t *testing.T) {
+	d, _ := newTest(t, "hang", Config{Parallel: 1})
+	d.Want([]string{"removed0001"}, nil)
+	waitFor(t, d, "removed0001", "downloading")
+	d.Want([]string{"current0001"}, nil)
+	waitFor(t, d, "removed0001", "")
+	waitFor(t, d, "current0001", "downloading")
+}
+
+func TestADownloadWantedAgainWhileStoppingStartsOver(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "calls")
+	t.Setenv("FAKE_YTDLP_LOG", log)
+	d, _ := newTest(t, "hang", Config{Parallel: 1})
+	d.Want([]string{"again000001"}, nil)
+	waitFor(t, d, "again000001", "downloading")
+	d.Want(nil, nil)
+	d.Want([]string{"again000001"}, nil)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		data, _ := os.ReadFile(log)
+		if strings.Count(string(data), "again000001") == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("yt-dlp ran %d times, want 2", strings.Count(string(data), "again000001"))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestStoppingYtdlpStopsWhatItStarted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sleep(1)")
+	}
+	d, _ := newTest(t, "orphan", Config{Timeout: 300 * time.Millisecond, Attempts: 1})
+	start := time.Now()
+	d.Want([]string{"orphan00001"}, nil)
+	waitFor(t, d, "orphan00001", "failed")
+	// Had the child survived, holding stdout open, Wait would have sat out its 5 s WaitDelay.
+	if took := time.Since(start); took > 3*time.Second {
+		t.Errorf("stopping took %v", took)
 	}
 }

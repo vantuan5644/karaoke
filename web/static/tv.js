@@ -63,21 +63,44 @@ function showJoin() {
 }
 
 // --- Players -------------------------------------------------------------------
+const PLAYER_TIMEOUT_MS = 20000;
+
+// loadYouTubeAPI loads YouTube's player script once. If it fails (offline, or blocked), the
+// next song tries again.
 function loadYouTubeAPI() {
   if (!tv.ytLoading) {
-    tv.ytLoading = new Promise((resolve) => {
+    tv.ytLoading = new Promise((resolve, reject) => {
       window.onYouTubeIframeAPIReady = resolve;
       const script = document.createElement('script');
       script.src = 'https://www.youtube.com/iframe_api';
+      script.onerror = () => {
+        tv.ytLoading = null;
+        script.remove();
+        reject(new Error("YouTube's player script didn't load"));
+      };
       document.head.append(script);
     });
   }
   return tv.ytLoading;
 }
 
-async function youtubePlayer() {
-  if (tv.yt) return tv.yt;
-  await loadYouTubeAPI();
+// youtubePlayer builds the one YouTube player. Everyone waiting for it shares one promise, so
+// state that arrives while it loads does not build a second player.
+function youtubePlayer() {
+  tv.ytReady ||= loadYouTubeAPI().then(makeYouTubePlayer).catch((err) => {
+    tv.ytReady = null;
+    throw err;
+  });
+  return tv.ytReady;
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function makeYouTubePlayer() {
   return new Promise((resolve) => {
     const player = new YT.Player('yt', {
       width: '100%', height: '100%',
@@ -137,6 +160,7 @@ function stopPlayers() {
   video.load();
   setMode(null);
   tv.url = null;
+  tv.starting = null;
 }
 
 function applyVolume() {
@@ -199,8 +223,12 @@ function fillUpNext(cur) {
 }
 
 function apply(cur) {
-  let play = cur.play;
   if (tv.phase === 'error') return; // already on its way out
+  // A song playing keeps the player it started in: its download finishing, being retried or
+  // being switched on mid-song would otherwise stop it or start it over. Real trouble comes
+  // from the players themselves (youtubeError, the video's error event).
+  if (tv.phase === 'playing' && (tv.mode || tv.starting === cur.qid)) return;
+  let play = cur.play;
   if (play.mode === 'embed' && tv.embedFailed === cur.qid) play = { mode: 'wait' }; // until the server catches up
   switch (play.mode) {
     case 'embed':
@@ -223,8 +251,19 @@ function apply(cur) {
 
 async function startEmbed(cur) {
   setPhase('playing');
-  const player = await youtubePlayer();
-  if (tv.qid !== cur.qid) return; // skipped while the player loaded
+  tv.starting = cur.qid;
+  let player;
+  try {
+    player = await withTimeout(youtubePlayer(), PLAYER_TIMEOUT_MS, "YouTube's player didn't load");
+  } catch (err) {
+    if (tv.starting === cur.qid && tv.qid === cur.qid) {
+      tv.starting = null;
+      askForCopy(cur, 0, `${err.message}; asking the server for a copy`);
+    }
+    return;
+  }
+  if (tv.qid !== cur.qid || tv.starting !== cur.qid) return; // skipped or stopped while it loaded
+  tv.starting = null;
   video.pause();
   setMode('embed');
   player.loadVideoById(cur.song.videoId);
@@ -263,20 +302,33 @@ function youtubeError(code) {
   const cur = tv.state?.current;
   if (!cur || cur.qid !== tv.qid) return;
   if ([101, 150, 153].includes(code)) {
-    tv.embedFailed = cur.qid;
-    setPhase('wait');
-    $('#wait .song').textContent = cur.song.title;
-    $('#wait .detail').textContent = "This video won't play embedded; asking the server for a copy";
-    api('/api/player/embed-failed', { method: 'POST', body: { qid: cur.qid, code } }).catch((err) => showError(cur, err.message));
+    askForCopy(cur, code, "This video won't play embedded; asking the server for a copy");
     return;
   }
   showError(cur, `YouTube refused to play it (error ${code}).`);
 }
 
+// askForCopy waits for the server to download what the embedded player can't play. code is
+// YouTube's error, or 0 when its player never loaded here.
+function askForCopy(cur, code, detail) {
+  tv.embedFailed = cur.qid;
+  setPhase('wait');
+  $('#wait .song').textContent = cur.song.title;
+  $('#wait .detail').textContent = detail;
+  api('/api/player/embed-failed', { method: 'POST', body: { qid: cur.qid, code } }).catch((err) => showError(cur, err.message));
+}
+
 function finish(qid) {
   if (!qid || tv.finished === qid) return;
   tv.finished = qid;
-  api('/api/player/next', { method: 'POST', body: { qid } }).catch((err) => console.warn('next:', err));
+  api('/api/player/next', { method: 'POST', body: { qid } }).catch((err) => {
+    console.warn('next:', err);
+    // Lost on the way (Wi-Fi, a server restart): try again while the song is still current.
+    if (tv.finished === qid) tv.finished = null;
+    later('finish', 3000, () => {
+      if (tv.state?.current?.qid === qid) finish(qid);
+    });
+  });
 }
 
 video.addEventListener('ended', () => tv.mode === 'file' && finish(tv.qid));
@@ -450,7 +502,7 @@ function start() {
   if (tv.started) return;
   tv.started = true;
   document.body.classList.add('started');
-  loadYouTubeAPI();
+  loadYouTubeAPI().catch((err) => console.warn(err.message)); // a head start; songs retry
   if (!Mic.unsupported()) {
     mic.context(); // the click that started the TV is what lets audio run
     if (mic.settings.on) mic.open().then(() => micChanged());

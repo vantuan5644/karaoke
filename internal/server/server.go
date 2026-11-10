@@ -22,7 +22,7 @@ import (
 type Downloader interface {
 	Status(id string) media.Status
 	Path(id string) (string, bool)
-	Want(ids []string)
+	Want(download, keep []string)
 }
 
 // Searcher is the part of youtube.Client the server uses.
@@ -39,6 +39,7 @@ type Config struct {
 	Downloader Downloader
 	Web        fs.FS    // index.html, tv.html and static/
 	URLs       []string // addresses phones can reach this server at, best first
+	AllowHosts []string // host names to answer to besides addresses and home names (see hosts.go)
 	Version    string
 }
 
@@ -47,6 +48,10 @@ type Server struct {
 	cfg     Config
 	hub     *hub
 	limiter *limiter
+
+	// publishing serializes building and sending state, so pages get snapshots in the order
+	// they were taken, and a page that connects sees every change after its first one.
+	publishing sync.Mutex
 
 	mu       sync.Mutex
 	status   PlayerStatus
@@ -62,15 +67,22 @@ func New(cfg Config) *Server {
 }
 
 // DownloadChanged is for the downloader's OnChange: progress reaches every page.
-func (s *Server) DownloadChanged() { s.publishState() }
+func (s *Server) DownloadChanged() {
+	s.publishing.Lock()
+	defer s.publishing.Unlock()
+	s.publishState()
+}
 
 func (s *Server) roomChanged() {
+	s.publishing.Lock()
+	defer s.publishing.Unlock()
 	if s.cfg.Downloader != nil {
 		s.cfg.Downloader.Want(wanted(s.cfg.Room.State()))
 	}
 	s.publishState()
 }
 
+// publishState sends the current state to every page; the caller holds s.publishing.
 func (s *Server) publishState() {
 	data, err := json.Marshal(s.snapshot())
 	if err != nil {
@@ -105,7 +117,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/settings", s.setSettings)
 
 	mux.HandleFunc("GET /media/yt/{id}", s.youtubeFile)
-	return securityHeaders(sameOriginWrites(mux))
+	return securityHeaders(knownHosts(s.cfg.AllowHosts, sameOriginWrites(mux)))
 }
 
 func (s *Server) page(name string) http.HandlerFunc {
@@ -132,6 +144,10 @@ func (s *Server) static() http.Handler {
 // sameOriginWrites refuses changes sent from another site's page. Phones on the party's
 // network carry no credentials a forged request could borrow, but a page elsewhere could
 // still skip or clear the queue through the visitor's browser.
+// sameOriginWrites keeps other sites' pages from changing anything. Over HTTPS and on
+// localhost browsers say where a request comes from (Sec-Fetch-Site); over plain HTTP on a
+// LAN they don't, and what stops a cross-site write there is that a JSON POST and a DELETE
+// both need a CORS preflight, which this server never grants. So POSTs must be JSON.
 func sameOriginWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -159,11 +175,13 @@ func securityHeaders(next http.Handler) http.Handler {
 		"connect-src 'self'",
 		"style-src 'self' 'unsafe-inline'",
 		"worker-src 'self' blob:",
+		"frame-ancestors 'none'", // no other page can frame the remote and trick a tap on Skip
 	}, "; ")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
 		// YouTube's embedded player refuses to start without knowing the embedding origin.
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		h.Set("Permissions-Policy", "microphone=(self), autoplay=(self \"https://www.youtube.com\")")

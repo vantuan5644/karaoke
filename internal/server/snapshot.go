@@ -92,12 +92,17 @@ func (s *Server) playFor(song room.Song, settings room.Settings) Play {
 	return Play{Mode: "wait", Progress: st.Progress}
 }
 
-// wanted lists, in queue order, the videos that must be on disk.
-func wanted(st room.State) []string {
-	var ids []string
+// wanted lists, in queue order, the videos to download (those that won't embed, or all of
+// them when the room asks for downloads), and the videos to keep on disk: every one still to
+// play, since a song already playing from its copy must not lose it to the cache trim.
+func wanted(st room.State) (download, keep []string) {
 	add := func(e room.Entry) {
-		if e.Song.VideoID != "" && (!e.Song.Embeddable || st.Settings.AlwaysDownload) {
-			ids = append(ids, e.Song.VideoID)
+		if e.Song.VideoID == "" {
+			return
+		}
+		keep = append(keep, e.Song.VideoID)
+		if !e.Song.Embeddable || st.Settings.AlwaysDownload {
+			download = append(download, e.Song.VideoID)
 		}
 	}
 	if st.Current != nil {
@@ -106,5 +111,5 @@ func wanted(st room.State) []string {
 	for _, e := range st.Queue {
 		add(e)
 	}
-	return ids
+	return download, keep
 }

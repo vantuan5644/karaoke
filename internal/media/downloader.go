@@ -3,11 +3,10 @@
 package media
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,7 +63,8 @@ type Downloader struct {
 	active   map[string]*job   // queued or running
 	pending  []string          // queued ids, in the order wanted
 	failed   map[string]failure
-	wanted   map[string]bool
+	wanted   map[string]bool // to download
+	keep     map[string]bool // never trimmed: wanted, plus whatever the room may still play
 	running  int
 	notified time.Time
 	wg       sync.WaitGroup
@@ -73,6 +73,8 @@ type Downloader struct {
 type job struct {
 	running  bool
 	progress float64
+	cancel   context.CancelFunc // stops the run; set once it starts
+	stopped  bool               // no longer wanted, so its end is not a failure
 }
 
 type failure struct {
@@ -104,14 +106,16 @@ func New(cfg Config) (*Downloader, error) {
 	if err := os.MkdirAll(cfg.Dir, 0o755); err != nil {
 		return nil, err
 	}
+	// What an interrupted download left. A file still held open (on Windows, by a yt-dlp that
+	// outlived us, or a virus scanner) only costs some disk space, so it is not fatal.
 	if err := os.RemoveAll(filepath.Join(cfg.Dir, tmpDir)); err != nil {
-		return nil, err
+		cfg.Logf("cache: clearing unfinished downloads: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Downloader{
 		cfg: cfg, ctx: ctx, cancel: cancel,
 		files: map[string]string{}, active: map[string]*job{},
-		failed: map[string]failure{}, wanted: map[string]bool{},
+		failed: map[string]failure{}, wanted: map[string]bool{}, keep: map[string]bool{},
 	}
 	entries, err := os.ReadDir(cfg.Dir)
 	if err != nil {
@@ -163,15 +167,16 @@ func (d *Downloader) Path(id string) (string, bool) {
 	return path, ok
 }
 
-// Want makes ids, in that order, the videos to have on disk: missing ones are queued (failed
-// ones again after a while), queued ones no longer wanted are dropped, and the cache never
-// evicts a wanted file.
-func (d *Downloader) Want(ids []string) {
+// Want makes download, in that order, the videos to fetch: missing ones are queued (failed
+// ones again after a while), and queued or running ones no longer wanted are dropped. keep
+// lists the videos the room may still play from disk; neither they nor the wanted ones are
+// ever trimmed from the cache. Want does not call OnChange: its caller publishes anyway.
+func (d *Downloader) Want(download, keep []string) {
 	d.mu.Lock()
-	wanted := make(map[string]bool, len(ids))
+	defer d.mu.Unlock()
+	wanted := make(map[string]bool, len(download))
 	var pending []string
-	changed := false
-	for _, id := range ids {
+	for _, id := range download {
 		if wanted[id] {
 			continue
 		}
@@ -187,49 +192,66 @@ func (d *Downloader) Want(ids []string) {
 		}
 		if _, ok := d.active[id]; !ok {
 			d.active[id] = &job{}
-			changed = true
 		}
 		pending = append(pending, id)
 	}
 	for _, id := range d.pending {
 		if !wanted[id] {
 			delete(d.active, id)
-			changed = true
+		}
+	}
+	// A download nobody wants any more gives its slot to one somebody does.
+	for id, j := range d.active {
+		if j.running && !wanted[id] && !j.stopped {
+			j.stopped = true
+			j.cancel()
 		}
 	}
 	d.pending = pending
 	d.wanted = wanted
-	d.startLocked()
-	d.mu.Unlock()
-	// Only a change notifies: the caller usually calls Want from its own change handler.
-	if changed {
-		d.notify(true)
+	d.keep = make(map[string]bool, len(wanted)+len(keep))
+	for id := range wanted {
+		d.keep[id] = true
 	}
+	for _, id := range keep {
+		d.keep[id] = true
+	}
+	d.startLocked()
 }
 
 func (d *Downloader) startLocked() {
 	for d.running < d.cfg.Parallel && len(d.pending) > 0 {
 		id := d.pending[0]
 		d.pending = d.pending[1:]
-		d.active[id].running = true
+		j := d.active[id]
+		ctx, cancel := context.WithCancel(d.ctx)
+		j.running, j.cancel = true, cancel
 		delete(d.failed, id)
 		d.running++
 		d.wg.Add(1)
-		go d.run(id)
+		go d.run(ctx, id, j)
 	}
 }
 
-func (d *Downloader) run(id string) {
+func (d *Downloader) run(ctx context.Context, id string, j *job) {
 	defer d.wg.Done()
-	path, err := d.fetchWithRetries(id)
+	path, err := d.fetchWithRetries(ctx, id)
+	j.cancel()
 	d.mu.Lock()
 	delete(d.active, id)
 	d.running--
-	if err != nil {
-		d.failed[id] = failure{err: err.Error(), at: time.Now()}
-	} else {
+	switch {
+	case err == nil:
 		d.files[id] = path
 		d.trimLocked()
+	case j.stopped && d.ctx.Err() == nil:
+		// Dropped while it ran. If it was wanted again meanwhile, it goes back to the front.
+		if d.wanted[id] {
+			d.active[id] = &job{}
+			d.pending = append([]string{id}, d.pending...)
+		}
+	default:
+		d.failed[id] = failure{err: err.Error(), at: time.Now()}
 	}
 	d.startLocked()
 	d.mu.Unlock()
@@ -238,35 +260,38 @@ func (d *Downloader) run(id string) {
 
 // fetchWithRetries tries again after a failure: YouTube's video servers now and then answer
 // one request with 403 and the next one with the video.
-func (d *Downloader) fetchWithRetries(id string) (string, error) {
+func (d *Downloader) fetchWithRetries(ctx context.Context, id string) (string, error) {
 	pause := d.cfg.Backoff
 	var err error
 	for attempt := 1; ; attempt++ {
 		var path string
-		path, err = d.fetch(id)
+		path, err = d.fetch(ctx, id)
 		if err == nil {
 			return path, nil
 		}
+		if ctx.Err() != nil {
+			return "", err
+		}
 		d.cfg.Logf("download %s, try %d of %d: %v", id, attempt, d.cfg.Attempts, err)
-		if attempt == d.cfg.Attempts || d.ctx.Err() != nil {
+		if attempt == d.cfg.Attempts {
 			return "", err
 		}
 		select {
 		case <-time.After(pause):
-		case <-d.ctx.Done():
+		case <-ctx.Done():
 			return "", err
 		}
 		pause *= 2
 	}
 }
 
-func (d *Downloader) fetch(id string) (string, error) {
+func (d *Downloader) fetch(ctx context.Context, id string) (string, error) {
 	work := filepath.Join(d.cfg.Dir, tmpDir, id)
 	if err := os.MkdirAll(work, 0o755); err != nil {
 		return "", err
 	}
 	defer os.RemoveAll(work)
-	ctx, cancel := context.WithTimeout(d.ctx, d.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, d.cfg.Timeout)
 	defer cancel()
 
 	h := strconv.Itoa(d.cfg.MaxHeight)
@@ -279,57 +304,80 @@ func (d *Downloader) fetch(id string) (string, error) {
 	}
 	args = append(append(args, d.cfg.Args...), "--", id)
 	cmd := exec.CommandContext(ctx, d.cfg.Bin, args...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
+	// Stopping yt-dlp has to stop everything it started: its standalone build runs the real
+	// work in a child process, and it runs ffmpeg. Whatever still holds its output open after
+	// that gets WaitDelay before Wait gives up on it.
+	stopTree(cmd)
+	cmd.WaitDelay = 5 * time.Second
 	var stderr tailBuffer
+	cmd.Stdout = &progressWriter{d: d, id: id}
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("yt-dlp: %w", err)
 	}
-	d.readProgress(id, stdout)
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
 			return "", errors.New("download stopped: " + ctx.Err().Error())
 		}
 		return "", errors.New(stderr.lastError(err))
 	}
-	return d.keep(id, work)
+	return d.move(id, work)
 }
 
-// readProgress turns yt-dlp's per-stream percentages into one figure: the video stream is
-// most of the bytes, the audio stream that follows it the rest.
-func (d *Downloader) readProgress(id string, r io.Reader) {
-	scanner := bufio.NewScanner(r)
-	stream, last := 0, 0.0
-	for scanner.Scan() {
-		m := progressPattern.FindStringSubmatch(scanner.Text())
-		if m == nil {
-			continue
+// progressWriter reads yt-dlp's progress lines and turns its per-stream percentages into one
+// figure: the video stream is most of the bytes, the audio stream that follows it the rest.
+type progressWriter struct {
+	d       *Downloader
+	id      string
+	partial []byte
+	stream  int
+	last    float64
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	p.partial = append(p.partial, b...)
+	for {
+		i := bytes.IndexByte(p.partial, '\n')
+		if i < 0 {
+			break
 		}
-		p, err := strconv.ParseFloat(m[1], 64)
-		if err != nil {
-			continue
-		}
-		if p+20 < last {
-			stream++
-		}
-		last = p
-		overall := p / 100 * 0.9
-		if stream > 0 {
-			overall = 0.9 + p/100*0.1
-		}
-		d.mu.Lock()
-		if j, ok := d.active[id]; ok {
-			j.progress = overall
-		}
-		d.mu.Unlock()
-		d.notify(false)
+		p.line(string(p.partial[:i]))
+		p.partial = p.partial[i+1:]
 	}
+	if len(p.partial) > 4096 { // not a progress line
+		p.partial = p.partial[:0]
+	}
+	return len(b), nil
 }
 
-func (d *Downloader) keep(id, work string) (string, error) {
+func (p *progressWriter) line(text string) {
+	m := progressPattern.FindStringSubmatch(text)
+	if m == nil {
+		return
+	}
+	pct, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return
+	}
+	if pct+20 < p.last {
+		p.stream++
+	}
+	p.last = pct
+	overall := pct / 100 * 0.9
+	if p.stream > 0 {
+		overall = 0.9 + pct/100*0.1
+	}
+	d := p.d
+	d.mu.Lock()
+	if j, ok := d.active[p.id]; ok {
+		j.progress = overall
+	}
+	d.mu.Unlock()
+	d.notify(false)
+}
+
+// move puts the finished file in the cache folder.
+func (d *Downloader) move(id, work string) (string, error) {
 	for _, ext := range mediaExts {
 		src := filepath.Join(work, id+ext)
 		if _, err := os.Stat(src); err == nil {
@@ -343,7 +391,7 @@ func (d *Downloader) keep(id, work string) (string, error) {
 	return "", errors.New("yt-dlp finished without a video file")
 }
 
-// trimLocked deletes the least recently used files until the cache fits, never a wanted one.
+// trimLocked deletes the least recently used files until the cache fits, never a kept one.
 func (d *Downloader) trimLocked() {
 	if d.cfg.MaxBytes <= 0 {
 		return
@@ -369,7 +417,7 @@ func (d *Downloader) trimLocked() {
 		if total <= d.cfg.MaxBytes {
 			return
 		}
-		if d.wanted[c.id] {
+		if d.keep[c.id] {
 			continue
 		}
 		if err := os.Remove(d.files[c.id]); err == nil {

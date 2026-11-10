@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -252,13 +253,18 @@ func (r *Room) change(apply func() error) error {
 		return err
 	}
 	r.version++
-	err := r.save()
+	if err := r.save(); err != nil {
+		// The change stands: every page sees it, and the next save may work (a full disk, or
+		// on Windows a file something else holds open). Failing the request would only make
+		// the phone send it again, and queue the song twice.
+		log.Printf("room: saving %s: %v", r.path, err)
+	}
 	notify := r.onChange
 	r.mu.Unlock()
 	if notify != nil {
 		notify()
 	}
-	return err
+	return nil
 }
 
 func (r *Room) finishCurrent() {

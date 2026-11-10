@@ -1,6 +1,7 @@
 package room
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -203,5 +204,18 @@ func TestMarkNotEmbeddable(t *testing.T) {
 	r.MarkNotEmbeddable(a.VideoID)
 	if r.State().Version != v {
 		t.Error("marking again changed the version")
+	}
+}
+
+func TestAFailedSaveKeepsTheChangeAndReportsNoError(t *testing.T) {
+	r, path := testRoom(t)
+	notified := 0
+	r.OnChange(func() { notified++ })
+	os.RemoveAll(filepath.Dir(path)) // nowhere left to save
+	if _, err := r.Add(song("A"), "an", false); err != nil {
+		t.Fatalf("Add = %v; a failed save must not fail the request (the phone would send it again)", err)
+	}
+	if s := r.State(); s.Current == nil || s.Current.Song.Title != "A" || notified != 1 {
+		t.Errorf("current = %+v, notified %d times; want the change kept and announced", s.Current, notified)
 	}
 }

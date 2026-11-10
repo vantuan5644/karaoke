@@ -59,12 +59,18 @@ func (s *Server) getState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	// Subscribe and take the first snapshot together: a change in between would otherwise
+	// reach neither.
+	s.publishing.Lock()
+	ch := s.hub.subscribe()
 	state, err := json.Marshal(s.snapshot())
+	s.publishing.Unlock()
 	if err != nil {
+		s.hub.unsubscribe(ch)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.hub.serveEvents(w, r, []event{{"state", state}})
+	s.hub.serveEvents(w, r, ch, []event{{"state", state}})
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
@@ -296,8 +302,14 @@ func (s *Server) embedFailed(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "that entry is not playing")
 		return
 	}
-	log.Printf("YouTube's player refused to embed %s (error %d)", videoID, req.Code)
-	s.cfg.YouTube.MarkNotEmbeddable(videoID)
+	// Code 0 is the TV's own trouble (YouTube's player never loaded there), not the video's:
+	// this play goes to a download, but searches keep calling the video embeddable.
+	if req.Code == 0 {
+		log.Printf("the TV could not load YouTube's player for %s; playing a download instead", videoID)
+	} else {
+		log.Printf("YouTube's player refused to embed %s (error %d)", videoID, req.Code)
+		s.cfg.YouTube.MarkNotEmbeddable(videoID)
+	}
 	s.roomResult(w, s.cfg.Room.MarkNotEmbeddable(videoID))
 }
 

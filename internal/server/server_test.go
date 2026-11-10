@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -83,7 +84,7 @@ func (f *fakeDownloader) Path(id string) (string, bool) {
 	return p, ok
 }
 
-func (f *fakeDownloader) Want(ids []string) {
+func (f *fakeDownloader) Want(ids, keep []string) {
 	f.mu.Lock()
 	f.wanted = append([]string(nil), ids...)
 	f.mu.Unlock()
@@ -179,7 +180,7 @@ func TestPagesAndHealth(t *testing.T) {
 		}
 	}
 	resp, _ := h.do("GET", "/", "")
-	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "frame-src https://www.youtube.com") {
+	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "frame-src https://www.youtube.com") || !strings.Contains(csp, "frame-ancestors 'none'") {
 		t.Errorf("CSP = %q", csp)
 	}
 	if resp, _ := h.do("GET", "/nope", ""); resp.StatusCode != 404 {
@@ -482,3 +483,23 @@ func TestAddressRankPrefersTheLAN(t *testing.T) {
 }
 
 func parseIP(s string) []byte { return net.ParseIP(s).To4() }
+
+func TestWantedDownloadsWhatWontEmbedAndKeepsEverythingStillToPlay(t *testing.T) {
+	entry := func(id string, embeds bool) room.Entry {
+		return room.Entry{Song: room.Song{VideoID: id, Embeddable: embeds}}
+	}
+	cur := entry("playing0001", true)
+	st := room.State{Current: &cur, Queue: []room.Entry{entry("blocked0001", false), entry("embeds00001", true), {}}}
+	download, keep := wanted(st)
+	if fmt.Sprint(download) != "[blocked0001]" {
+		t.Errorf("download = %v", download)
+	}
+	// The song playing embeds, but it may be playing from a copy made earlier: keep that copy.
+	if fmt.Sprint(keep) != "[playing0001 blocked0001 embeds00001]" {
+		t.Errorf("keep = %v", keep)
+	}
+	st.Settings.AlwaysDownload = true
+	if download, _ := wanted(st); fmt.Sprint(download) != "[playing0001 blocked0001 embeds00001]" {
+		t.Errorf("download with alwaysDownload = %v", download)
+	}
+}

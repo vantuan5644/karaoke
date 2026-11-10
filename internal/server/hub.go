@@ -62,8 +62,10 @@ func (h *hub) count() int {
 	return len(h.clients)
 }
 
-// serveEvents streams events to one page, starting with first (the current state).
-func (h *hub) serveEvents(w http.ResponseWriter, r *http.Request, first []event) {
+// serveEvents streams one page's subscription, ch, starting with first (the current state).
+// It unsubscribes when the page goes.
+func (h *hub) serveEvents(w http.ResponseWriter, r *http.Request, ch chan event, first []event) {
+	defer h.unsubscribe(ch)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -73,8 +75,6 @@ func (h *hub) serveEvents(w http.ResponseWriter, r *http.Request, first []event)
 	header.Set("Content-Type", "text/event-stream")
 	header.Set("Cache-Control", "no-cache")
 	header.Set("X-Accel-Buffering", "no")
-	ch := h.subscribe()
-	defer h.unsubscribe(ch)
 	w.WriteHeader(http.StatusOK)
 	for _, e := range first {
 		writeEvent(w, e)

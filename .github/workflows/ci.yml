@@ -28,7 +28,8 @@ jobs:
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go vet ./...
       - run: go test -race ./...
-      - run: node --test web/test/
+      # A glob, not the directory: Node 22 only takes a directory from version 23 on.
+      - run: node --test "web/test/*.test.mjs"
 
   docker:
     runs-on: ubuntu-latest
@@ -38,7 +39,11 @@ jobs:
         run: docker build -t karaoke:ci --build-arg VERSION=ci .
       - name: it serves
         run: |
-          docker run -d --name k -p 8765:8765 karaoke:ci
+          docker run -d --name karaoke-ci -p 8765:8765 karaoke:ci
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/healthz && break; sleep 1; done
           curl -fsS http://127.0.0.1:8765/ | grep -q Karaoke
-          docker logs k
+          docker exec karaoke-ci yt-dlp --version
+          docker exec karaoke-ci ffmpeg -version | head -1
+      - name: container log
+        if: always()
+        run: docker logs karaoke-ci || true

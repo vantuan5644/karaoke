@@ -9,7 +9,7 @@ build:
 
 test:
 	go test -race ./...
-	node --test web/test/
+	node --test "web/test/*.test.mjs"
 
 check: test
 	gofmt -l . | tee /dev/stderr | (! read)

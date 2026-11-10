@@ -1,7 +1,8 @@
-// The singer's mic through the browser: a live vocal chain (high-pass, EQ, compressor), the
-// karaoke echo and a reverb, a limiter, a feedback guard, and a probe that measures how late
-// the singer hears themselves.
-import { CHAIN, HowlGuard, impulse, medianMs, normalize, params } from './mic-core.js';
+// The singer's mic through the browser: a live vocal chain (high-pass, pitch correction,
+// tone, compressor), a doubler, the karaoke echo and a reverb, a limiter, a feedback guard,
+// and a probe that measures how late the singer hears themselves. When the server is on this
+// computer and has PipeWire, mic-native.js does all this there instead, much faster.
+import { CHAIN, HowlGuard, impulse, medianMs, normalize, params, tunePlan } from './mic-core.js';
 import { audioContext } from './audio.js';
 
 // When the mic howls it is turned down by 40%, at most every 3 s and never below 25%: real
@@ -65,10 +66,16 @@ export class Mic {
     const n = {
       input: ctx.createGain(),
       highpass: biquad('highpass', CHAIN.highpassHz),
+      tuneIn: ctx.createGain(), // pitch correction goes between these two once it is wanted
+      tuneOut: ctx.createGain(),
+      warmth: biquad('lowshelf', CHAIN.warmthHz),
       mud: biquad('peaking', CHAIN.mudHz, CHAIN.mudGainDb, 1),
       presence: biquad('peaking', CHAIN.presenceHz, CHAIN.presenceGainDb, 0.8),
+      bright: biquad('highshelf', CHAIN.brightHz),
       compressor: compressor(CHAIN.compressor),
       mic: ctx.createGain(),
+      doubleSend: ctx.createGain(),
+      doubleSides: ctx.createChannelMerger(2),
       echoSend: ctx.createGain(),
       echoDelay: ctx.createDelay(1),
       echoFeedback: ctx.createGain(),
@@ -89,8 +96,25 @@ export class Mic {
     n.reverbPreDelay.delayTime.value = CHAIN.reverbPreDelay;
     n.meter.fftSize = 2048;
 
-    // dry: input -> high-pass -> EQ -> compressor -> mic level -> master
-    n.input.connect(n.highpass).connect(n.mud).connect(n.presence).connect(n.compressor).connect(n.mic).connect(n.master);
+    // dry: input -> high-pass -> (tune) -> tone and EQ -> compressor -> mic level -> master
+    n.input.connect(n.highpass).connect(n.tuneIn).connect(n.tuneOut);
+    n.tuneOut.connect(n.warmth).connect(n.mud).connect(n.presence).connect(n.bright).connect(n.compressor).connect(n.mic).connect(n.master);
+    // double: two copies 10 to 30 ms late, each drifting slowly (a few cents of pitch), one per side
+    n.mic.connect(n.doubleSend);
+    n.doublers = [];
+    CHAIN.doubler.forEach((side, i) => {
+      const delay = ctx.createDelay(0.1);
+      delay.delayTime.value = side.ms / 1000;
+      const lfo = ctx.createOscillator();
+      const depth = ctx.createGain();
+      lfo.frequency.value = side.hz;
+      depth.gain.value = side.depthMs / 1000;
+      lfo.connect(depth).connect(delay.delayTime);
+      lfo.start();
+      n.doubleSend.connect(delay).connect(n.doubleSides, 0, i);
+      n.doublers.push(delay, lfo, depth);
+    });
+    n.doubleSides.connect(n.master);
     // echo: one delay feeding itself through the filters, so each repeat is darker and quieter
     n.mic.connect(n.echoSend).connect(n.echoDelay).connect(n.echoHighpass).connect(n.echoLowpass);
     n.echoLowpass.connect(n.echoFeedback).connect(n.echoDelay);
@@ -99,7 +123,9 @@ export class Mic {
     n.mic.connect(n.reverbSend).connect(n.reverbPreDelay).connect(n.reverb).connect(n.reverbHighpass).connect(n.master);
     // out
     n.master.connect(n.limiter).connect(ctx.destination);
-    n.compressor.connect(n.meter);
+    // The meter and the feedback guard listen before the compressor, which would otherwise
+    // hold a howl under the guard's threshold.
+    n.bright.connect(n.meter);
     this.nodes = n;
     this.apply();
   }
@@ -114,6 +140,35 @@ export class Mic {
     n.echoFeedback.gain.setTargetAtTime(p.echoFeedback, t, 0.05);
     n.echoDelay.delayTime.setTargetAtTime(p.echoTime, t, 0.05);
     n.reverbSend.gain.setTargetAtTime(p.reverbSend, t, 0.05);
+    n.warmth.gain.setTargetAtTime(p.warmthDb, t, 0.05);
+    n.bright.gain.setTargetAtTime(p.brightDb, t, 0.05);
+    n.doubleSend.gain.setTargetAtTime(p.doubleMix, t, 0.05);
+    this.tune(p.tune);
+  }
+
+  // tune sets pitch correction, loading its worklet the first time it is wanted.
+  async tune(amount) {
+    const plan = tunePlan(amount);
+    if (this.tuner) {
+      this.tuner.port.postMessage({ plan });
+      return;
+    }
+    if (!amount || this.tunerLoading) return;
+    this.tunerLoading = true;
+    try {
+      await this.ctx.audioWorklet.addModule('/static/tune-worklet.js');
+      const n = this.nodes;
+      if (!n) return; // let go of while it loaded
+      this.tuner = new AudioWorkletNode(this.ctx, 'pitch-tuner', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      n.tuneIn.disconnect();
+      n.tuneIn.connect(this.tuner).connect(n.tuneOut);
+      this.tuner.port.postMessage({ plan: tunePlan(this.settings.tune) });
+    } catch (err) {
+      this.error = `Pitch correction: ${err.message}`;
+      this.onChange(this);
+    } finally {
+      this.tunerLoading = false;
+    }
   }
 
   async set(changes) {
@@ -171,6 +226,25 @@ export class Mic {
     this.stream = null;
     this.level = 0;
     cancelAnimationFrame(this.watching);
+  }
+
+  // dispose lets go of everything: the mic, and the whole chain in the page's audio, which
+  // otherwise keeps running (its oscillators and the pitch worklet never stop by themselves).
+  dispose() {
+    this.close();
+    if (this.tuner) {
+      this.tuner.port.postMessage({ stop: true });
+      this.tuner.disconnect();
+      this.tuner = null;
+    }
+    const n = this.nodes;
+    if (!n) return;
+    for (const node of [...Object.values(n), ...n.doublers]) {
+      if (!(node instanceof AudioNode)) continue;
+      if (node instanceof OscillatorNode) node.stop();
+      node.disconnect();
+    }
+    this.nodes = null;
   }
 
   fail(message) {
@@ -239,11 +313,17 @@ export class Mic {
 
   // status is what the TV reports for the phones.
   status() {
+    const s = this.settings;
     return {
-      on: this.settings.on,
-      volume: this.settings.volume,
-      echo: this.settings.echo,
-      reverb: this.settings.reverb,
+      on: s.on,
+      volume: s.volume,
+      echo: s.echo,
+      reverb: s.reverb,
+      warmth: s.warmth,
+      bright: s.bright,
+      double: s.double,
+      tune: s.tune,
+      engine: 'browser',
       device: this.device,
       latencyMs: this.latencyMs ?? 0,
       outputMs: this.ctx ? Math.round(((this.ctx.baseLatency || 0) + (this.ctx.outputLatency || 0)) * 1000) : 0,

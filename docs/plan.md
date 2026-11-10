@@ -102,6 +102,39 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    there is one. Upstream Demucs was archived.
 4. **Hardware mics** stay the zero-latency option: a mixer or karaoke speaker, with the
    computer's audio into its line-in.
+5. **The mic outside the browser** (done, `internal/voice`). Also on 2026-11-10: "my voice is
+   late". Measured electronically on omarchy (Chromium's output into a silent PipeWire null
+   sink, its mic on that sink's monitor, the page's own delay probe): 69 to 73 ms round trip
+   with the page's `latencyHint: 'interactive'`, 67 to 68 at `latencyHint: 0`, 61 to 65 with
+   `PULSE_LATENCY_MSEC=5` as well. Chromium's output reports 30 to 38 ms of latency on its
+   own; a page cannot get under about 60 ms. A plain `pw-record | pw-play` loop at 128 samples
+   was 22.7 ms with stdio buffering, 5.3 ms with `stdbuf -o0`/`-i0`; `pw-loopback`, 2.7 ms.
+   So when the TV page is on the server's computer (loopback, or one of its own addresses,
+   and no proxy header), the server runs the mic: `pw-record` (mono f32), the chain in Go,
+   `pw-play` (stereo). With the two streams in different driver groups (the mic's and the
+   speakers'), `pw-play` missed nearly every cycle (546 errors in 1.5 s); the same
+   `node.group` puts them under one driver, and then 0 errors in 10 s. A chunk is dropped
+   when more than a cycle and a half waits in `pw-play`'s pipe for four writes running
+   (FIONREAD), so a stall cannot leave the voice late for good. Through a virtual mic
+   looped back to itself, the engine's click came round every 5.3 ms, and its own delay
+   probe measured 5 ms where Chromium, through the same loop, measured 51 to 57. The whole
+   chain with every knob on takes about 28 ms of CPU per second of audio (3 of them for
+   flushing numbers too small to hear to zero: a review found that a minute of silence left
+   the reverb full of subnormals, 40% slower to process on a Ryzen, worse on Intel). An unattended mic (no
+   request from the TV page for 20 s) turns itself off.
+6. **Voice tuning** (done), both ways the user asked for: tone (Warmth: a 220 Hz low shelf
+   up to +6 dB; Bright: a 5 kHz high shelf up to +8 dB; Double: two copies 14 and 23 ms late,
+   drifting 2.5 to 3 ms at 0.31 and 0.47 Hz, one per side) and Tune, pitch correction: YIN at
+   16 kHz every 5 ms (70 to 800 Hz, threshold 0.15), then TD-PSOLA with Hann grains two periods
+   long, read 8 ms behind the voice and lined up a whole period apart, so the voice keeps its
+   formants. The knob sets how much of the way to the nearest semitone (all of it from 60)
+   and how fast (0.2 s at 20, 5 ms at 100); a note is held until the singer is 0.65 semitone
+   from it. It is in Go for the native mic and in an AudioWorklet (`tune-worklet.js`) for the
+   browser, with the same tests: 452 Hz and 430 Hz come out within 4 cents of 440 at 100, 200
+   Hz goes to 196, the level stays within 1 dB, and noise passes through only delayed. The
+   Go chain matches the browser's loudness: Chrome's compressor adds makeup gain (0.6 of
+   what it takes off at full scale, 9.6 dB here), so the Go one does too, and both feedback
+   guards now listen before the compressor, which held a howl under their level threshold.
 
 ## Lyrics panel (done)
 

@@ -26,6 +26,7 @@ import (
 	"github.com/vantuan5644/karaoke/internal/media"
 	"github.com/vantuan5644/karaoke/internal/room"
 	"github.com/vantuan5644/karaoke/internal/server"
+	"github.com/vantuan5644/karaoke/internal/voice"
 	"github.com/vantuan5644/karaoke/internal/youtube"
 	"github.com/vantuan5644/karaoke/web"
 )
@@ -48,6 +49,9 @@ type options struct {
 	tlsCert   string
 	tlsKey    string
 	open      bool
+	nativeMic bool
+	micBuffer int
+	micOutput string
 }
 
 func main() {
@@ -77,6 +81,9 @@ func parseFlags() options {
 	flag.StringVar(&o.tlsCert, "tls-cert", "", "serve HTTPS with this certificate (the TV page needs HTTPS for a mic, unless it is on localhost)")
 	flag.StringVar(&o.tlsKey, "tls-key", "", "the key for -tls-cert")
 	flag.BoolVar(&o.open, "open", false, "open the TV page in the default browser once the server is up")
+	flag.BoolVar(&o.nativeMic, "native-mic", true, "when the TV page is on this computer, run the mic through PipeWire here: about 5 ms from mic to speaker instead of a browser's 60-70 (Linux; false: always the browser)")
+	flag.IntVar(&o.micBuffer, "mic-buffer", voice.DefaultBuffer, "samples per audio cycle for -native-mic; try 256 if the voice crackles")
+	flag.StringVar(&o.micOutput, "mic-output", "", "PipeWire sink for -native-mic, by node name (default: the system's default output)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -133,6 +140,10 @@ func run(o options) error {
 		cfg.Downloader = dl
 		defer dl.Close()
 	}
+	if engine := newVoice(o); engine != nil {
+		cfg.Voice = engine
+		defer engine.Close()
+	}
 
 	listener, err := net.Listen("tcp", o.listen)
 	if err != nil {
@@ -187,6 +198,25 @@ func run(o options) error {
 		return nil
 	}
 	return err
+}
+
+// newVoice starts the low-latency mic engine when PipeWire is here, or says why not.
+func newVoice(o options) *voice.Engine {
+	if !o.nativeMic {
+		return nil
+	}
+	opt, err := voice.Find(context.Background())
+	if err != nil {
+		log.Printf("mic: %v; the TV page's browser runs the mic instead", err)
+		return nil
+	}
+	if o.micBuffer < 32 || o.micBuffer > 2048 {
+		log.Printf("mic: -mic-buffer %d is outside 32..2048; using %d", o.micBuffer, voice.DefaultBuffer)
+		o.micBuffer = voice.DefaultBuffer
+	}
+	opt.Buffer, opt.Output = o.micBuffer, o.micOutput
+	log.Printf("mic: low-latency PipeWire mic ready for a TV page on this computer (%d-sample cycles)", opt.Buffer)
+	return voice.New(opt)
 }
 
 func publicURLs(u string) []string {

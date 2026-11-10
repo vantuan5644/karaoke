@@ -1,7 +1,26 @@
 // The mic's settings and the arithmetic behind them, kept apart from the Web Audio graph so
 // they can be tested without a browser.
 
-export const DEFAULTS = Object.freeze({ on: false, volume: 100, echo: 35, reverb: 25, deviceId: '' });
+export const DEFAULTS = Object.freeze({
+  on: false, volume: 100, echo: 35, reverb: 25,
+  // Voice tuning, all off to start: warmth (low-mid body), bright (presence and air),
+  // double (a second voice beside the first) and tune (pitch correction).
+  warmth: 0, bright: 0, double: 0, tune: 0,
+  deviceId: '', // the browser's mic
+  nativeDevice: '', // the server's PipeWire mic, by node name
+  lowLatency: true, // use the server's PipeWire mic when this page is on its computer
+});
+
+// The knobs a singer turns, with their ranges, in the order the panels show them.
+export const KNOBS = Object.freeze({
+  volume: { label: 'Mic volume', max: 200, step: 5 },
+  echo: { label: 'Echo', max: 100, step: 5 },
+  reverb: { label: 'Reverb', max: 100, step: 5 },
+  warmth: { label: 'Warmth', max: 100, step: 5 },
+  bright: { label: 'Bright', max: 100, step: 5 },
+  double: { label: 'Double', max: 100, step: 5 },
+  tune: { label: 'Tune', max: 100, step: 5 },
+});
 
 // Presets a singer can pick from without knowing what a compressor is.
 export const PRESETS = Object.freeze({
@@ -14,13 +33,12 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : 
 
 // normalize keeps stored or remote-sent settings inside what the chain accepts.
 export function normalize(s = {}) {
-  return {
-    on: Boolean(s.on),
-    volume: Math.round(clamp(s.volume ?? DEFAULTS.volume, 0, 200)),
-    echo: Math.round(clamp(s.echo ?? DEFAULTS.echo, 0, 100)),
-    reverb: Math.round(clamp(s.reverb ?? DEFAULTS.reverb, 0, 100)),
-    deviceId: typeof s.deviceId === 'string' ? s.deviceId : '',
-  };
+  const out = { on: Boolean(s.on) };
+  for (const [k, { max }] of Object.entries(KNOBS)) out[k] = Math.round(clamp(s[k] ?? DEFAULTS[k], 0, max));
+  out.deviceId = typeof s.deviceId === 'string' ? s.deviceId : '';
+  out.nativeDevice = typeof s.nativeDevice === 'string' ? s.nativeDevice : '';
+  out.lowLatency = s.lowLatency === undefined ? DEFAULTS.lowLatency : Boolean(s.lowLatency);
+  return out;
 }
 
 // params turns the three knobs a singer sees into the chain's numbers. The echo is the
@@ -34,14 +52,34 @@ export function params(s) {
     echoFeedback: 0.12 + (n.echo / 100) * 0.33,
     echoTime: 0.16,
     reverbSend: (n.reverb / 100) * 0.85,
+    warmthDb: (n.warmth / 100) * CHAIN.warmthMaxDb,
+    brightDb: (n.bright / 100) * CHAIN.brightMaxDb,
+    doubleMix: (n.double / 100) * 0.7,
+    tune: n.tune,
   };
 }
+
+// tunePlan is the Tune knob's arithmetic (the same as the Go engine's tuneParams): how much
+// of the way to the nearest note to pull (0..1), and how quickly. Low settings pull a little
+// and slowly, keeping slides and vibrato; 100 snaps at once, the robotic effect.
+export function tunePlan(tune) {
+  const s = clamp(tune, 0, 100) / 100;
+  if (s === 0) return { amount: 0, seconds: 0 };
+  return { amount: Math.min(1, s / 0.6), seconds: 0.3 * (1 - s) * (1 - s) + 0.005 };
+}
+
+// TUNE_DELAY_MS is what pitch correction adds while it is on (the Go engine's DelayMs).
+export const TUNE_DELAY_MS = 8;
 
 // The fixed part of the chain: a live vocal chain in the usual order.
 export const CHAIN = Object.freeze({
   highpassHz: 90, // rumble, handling noise and plosives
+  warmthHz: 220, warmthMaxDb: 6, // low shelf
   mudHz: 300, mudGainDb: -3,
   presenceHz: 4000, presenceGainDb: 3,
+  brightHz: 5000, brightMaxDb: 8, // high shelf
+  // The doubler: two copies a little late, each drifting slowly, one per side.
+  doubler: [{ ms: 14, depthMs: 2.5, hz: 0.31 }, { ms: 23, depthMs: 3, hz: 0.47 }],
   compressor: { threshold: -24, knee: 6, ratio: 3, attack: 0.003, release: 0.15 },
   echoHighpassHz: 250, echoLowpassHz: 4500,
   reverbSeconds: 1.2, reverbPreDelay: 0.025, reverbHighpassHz: 200,

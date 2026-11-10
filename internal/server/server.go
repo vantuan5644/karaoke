@@ -37,11 +37,13 @@ type Config struct {
 	Room       *room.Room
 	YouTube    Searcher
 	Downloader Downloader
-	Lyrics     LyricsSource // nil when lyrics are off
-	Library    Library      // nil without -library
-	Web        fs.FS        // index.html, tv.html and static/
-	URLs       []string     // addresses phones can reach this server at, best first
-	AllowHosts []string     // host names to answer to besides addresses and home names (see hosts.go)
+	Lyrics     LyricsSource  // nil when lyrics are off
+	Library    Library       // nil without -library
+	Voice      Voice         // nil without PipeWire, or with -native-mic=false
+	MicIdle    time.Duration // how long an unattended mic stays on (tests); 0 is micIdle
+	Web        fs.FS         // index.html, tv.html and static/
+	URLs       []string      // addresses phones can reach this server at, best first
+	AllowHosts []string      // host names to answer to besides addresses and home names (see hosts.go)
 	Version    string
 }
 
@@ -58,6 +60,9 @@ type Server struct {
 	mu       sync.Mutex
 	status   PlayerStatus
 	statusAt time.Time
+	micTimer *time.Timer
+	micLast  time.Time  // when the TV page last asked about the mic
+	micMu    sync.Mutex // a change to the mic, against the auto-off
 }
 
 // New returns a Server and hooks it to the room's changes.
@@ -121,6 +126,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/lyrics/search", s.lyricsSearch)
 	mux.HandleFunc("POST /api/queue/{qid}/lyrics", s.setLyrics)
 	mux.HandleFunc("POST /api/queue/{qid}/key", s.setKey)
+	mux.HandleFunc("GET /api/mic", s.micInfo)
+	mux.HandleFunc("POST /api/mic", s.setMic)
+	mux.HandleFunc("GET /api/mic/devices", s.micDevices)
+	mux.HandleFunc("POST /api/mic/measure", s.measureMic)
 
 	mux.HandleFunc("GET /media/yt/{id}", s.youtubeFile)
 	mux.HandleFunc("GET /media/lib/{id}", s.libraryFile)

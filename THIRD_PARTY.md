@@ -74,3 +74,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+## Freeverb (algorithm only)
+
+`internal/voice/dsp.go`'s reverb follows Freeverb by Jezar at Dreampoint (public domain): eight
+damped comb filters and four all-passes per side, with its delay-line tunings. No code is
+copied. The pitch detector is YIN (de Cheveigné and Kawahara, 2002), written from the paper.

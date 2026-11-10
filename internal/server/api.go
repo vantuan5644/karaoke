@@ -35,6 +35,11 @@ type MicStatus struct {
 	Volume    int     `json:"volume"`
 	Echo      int     `json:"echo"`
 	Reverb    int     `json:"reverb"`
+	Warmth    int     `json:"warmth"`
+	Bright    int     `json:"bright"`
+	Double    int     `json:"double"`
+	Tune      int     `json:"tune"`
+	Engine    string  `json:"engine,omitempty"` // "native" (PipeWire on the server) or "browser"
 	Device    string  `json:"device,omitempty"`
 	LatencyMs float64 `json:"latencyMs,omitempty"` // the measured round trip
 	OutputMs  float64 `json:"outputMs,omitempty"`  // what the browser says its output adds
@@ -51,6 +56,7 @@ var (
 		"toggle": true, "play": true, "pause": true, "restart": true,
 		"seek": true, "volume": true, "mute": true,
 		"mic-toggle": true, "mic-volume": true, "mic-echo": true, "mic-reverb": true, "mic-preset": true,
+		"mic-warmth": true, "mic-bright": true, "mic-double": true, "mic-tune": true,
 		"lyrics-toggle": true, "lyrics-scroll": true,
 	}
 	playerStates = map[string]bool{
@@ -275,6 +281,13 @@ func (s *Server) playerStatus(w http.ResponseWriter, r *http.Request) {
 		m.Volume = int(clampFloat(float64(m.Volume), 0, 200))
 		m.Echo = int(clampFloat(float64(m.Echo), 0, 100))
 		m.Reverb = int(clampFloat(float64(m.Reverb), 0, 100))
+		m.Warmth = int(clampFloat(float64(m.Warmth), 0, 100))
+		m.Bright = int(clampFloat(float64(m.Bright), 0, 100))
+		m.Double = int(clampFloat(float64(m.Double), 0, 100))
+		m.Tune = int(clampFloat(float64(m.Tune), 0, 100))
+		if m.Engine != "native" {
+			m.Engine = "browser"
+		}
 		m.Device = clean(m.Device, 100)
 		m.LatencyMs = clampFloat(m.LatencyMs, 0, 5000)
 		m.OutputMs = clampFloat(m.OutputMs, 0, 5000)

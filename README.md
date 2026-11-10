@@ -74,6 +74,9 @@ set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose
 | `-public-url` | | The address the QR code shows. Its host name is also allowed (below). |
 | `-allow-host` | | More host names to answer to, comma-separated, e.g. `karaoke.example.com`. |
 | `-tls-cert`, `-tls-key` | | Serve HTTPS. |
+| `-native-mic` | `true` | Run the mic through PipeWire on this computer when the TV page is here too (Linux). `false`: always in the browser. |
+| `-mic-buffer` | `128` | Samples per audio cycle for the native mic (2.7 ms). Try `256` if the voice crackles. |
+| `-mic-output` | | PipeWire sink for the native mic, by node name (default: the system's default output). |
 
 Settings on the phone (gear icon): **Download every song** plays everything from the server's
 copy (no YouTube ads; each song waits for its download), and the length of the "up next" card.
@@ -89,19 +92,43 @@ server with `-listen 127.0.0.1:8765` to keep it on this computer only.
 ## Singing through the computer
 
 Plug a USB mic into the computer that shows the TV page, click the mic button at the bottom
-left (or press **V**), and switch it on. The page runs the voice through the chain a karaoke
-machine uses: a high-pass filter for rumble and pops, a little EQ (less boom, more presence),
-a gentle compressor, the karaoke echo, a reverb, and a limiter. **Echo** and **Reverb** are
-the two knobs that matter, with *Dry*, *KTV* and *Hall* as starting points. Phones get a mic
-card under the song for turning it on, setting levels and picking a preset mid-song.
+left (or press **V**), and switch it on. The voice goes through the chain a karaoke machine
+uses: a high-pass filter for rumble and pops, a little EQ (less boom, more presence), a gentle
+compressor, the karaoke echo, a reverb, and a limiter. **Echo** and **Reverb** are the two
+knobs that matter, with *Dry*, *KTV* and *Hall* as starting points. Phones get a mic card
+under the song for turning it on, setting levels and picking a preset mid-song.
 
-- **The mic only works on `localhost` or HTTPS**, a browser rule. Opening the TV page on the
-  server's own computer (`http://localhost:8765/tv`) is fine. For a TV browser on another
-  machine, serve HTTPS (`-tls-cert`/`-tls-key`, or `tailscale serve`).
-- **Delay.** You hear yourself a little late, because the sound goes through the computer.
-  **Measure delay** plays three clicks through the speakers and times their return through
-  the mic. Under about 25 ms feels natural. On Linux, PipeWire's buffer adds to it; if the
-  figure is high, try `pw-metadata -n settings 0 clock.force-quantum 256` (and `0` to undo).
+**Voice** has four more knobs, all off to start:
+
+- **Warmth** adds body in the low mids (a shelf at 220 Hz, up to +6 dB).
+- **Bright** adds presence and air (a shelf at 5 kHz, up to +8 dB), for a voice that sounds dull.
+- **Double** adds a second voice beside the first, two copies 14 and 23 ms late that drift a
+  little in time, one to each side: a fuller sound, like a singer and their double take.
+- **Tune** is pitch correction ("auto-tune"). It finds the note you sing and pulls it toward the
+  nearest semitone. Around 40 to 60 it sounds natural: a note sung a little flat or sharp comes
+  out on pitch, and slides and vibrato survive. At 100 it snaps at once, the robotic effect.
+  While it is on, your voice comes back 8 ms later.
+
+### Low latency: the mic outside the browser
+
+A browser is slow at this: from the mic, through the page, to the speakers takes 60 to 70 ms
+on Linux, late enough to hear as an echo of yourself. So when the TV page is open on the
+server's own computer and the server finds PipeWire (most Linux desktops), the server runs the
+mic itself: `pw-record` from the mic, the same chain in Go, `pw-play` to the speakers, about
+5 ms in all. The panel says which it is using, and **Low latency** switches back to the browser.
+Measured on one desktop with a virtual mic looped back to itself: 5 ms through the server,
+51 to 57 ms through Chromium. The mic and speakers add their own few milliseconds to both.
+
+On a Mac, Windows, or a TV browser on another machine, the browser runs the mic as before. A
+mic left on by a closed TV page turns itself off within 20 s, and only a page on the server's
+own computer can reach this mic (phones change it through the TV page).
+
+- **The browser's mic only works on `localhost` or HTTPS**, a browser rule. Opening the TV page
+  on the server's own computer (`http://localhost:8765/tv`) is fine. For a TV browser on
+  another machine, serve HTTPS (`-tls-cert`/`-tls-key`, or `tailscale serve`).
+- **Delay.** **Measure delay** plays three clicks through the speakers and times their return
+  through the mic. Under about 25 ms feels natural. In the browser on Linux, PipeWire's buffer
+  adds to it; try `pw-metadata -n settings 0 clock.force-quantum 256` (and `0` to undo).
 - **Feedback.** Headphones, or a mic pointed away from the speakers, prevent it. If it starts
   to howl (a loud tone that holds one pitch for a second), the page turns the mic down.
 - The browser's call processing (echo cancellation, noise suppression, auto gain) is off: it
@@ -195,6 +222,7 @@ make dist     # binaries for every platform in dist/
 Layout: `internal/room` (queue and its saved state), `internal/youtube` (keyless search and the
 embed check), `internal/media` (yt-dlp downloads and the cache), `internal/library` (scanning and searching folders), `internal/lyrics` (LRCLIB and
 matching titles to songs; `LRCLIB_LIVE=1 go test ./internal/lyrics` checks the real titles),
+`internal/voice` (the native mic: the vocal chain, pitch correction and the PipeWire pipeline),
 `web/static/vendor` (Signalsmith Stretch and cdgraphics; see `THIRD_PARTY.md`), `internal/server` (HTTP API,
 live events over SSE, QR codes), `web/` (the phone remote `index.html` and the TV `tv.html`,
 plain ES modules, no build step). Design notes and measurements: `docs/plan.md`.

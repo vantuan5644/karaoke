@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, HowlGuard, PRESETS, howlScore, impulse, latencyVerdict, medianMs, normalize, params } from '../static/mic-core.js';
+import { DEFAULTS, HowlGuard, PRESETS, howlScore, impulse, latencyVerdict, medianMs, normalize, params, tunePlan } from '../static/mic-core.js';
 
 test('normalize clamps and fills in', () => {
   assert.deepEqual(normalize(), { ...DEFAULTS });
-  assert.deepEqual(normalize({ on: 1, volume: 999, echo: -3, reverb: 50.4, deviceId: 7 }),
-    { on: true, volume: 200, echo: 0, reverb: 50, deviceId: '' });
+  assert.deepEqual(normalize({ on: 1, volume: 999, echo: -3, reverb: 50.4, deviceId: 7, tune: 101, lowLatency: 0 }),
+    { ...DEFAULTS, on: true, volume: 200, echo: 0, reverb: 50, deviceId: '', tune: 100, lowLatency: false });
   assert.equal(normalize({ volume: NaN }).volume, 0);
 });
 
@@ -17,6 +17,18 @@ test('params keep the echo from running away', () => {
   }
   assert.equal(params({ volume: 150 }).micGain, 1.5);
   assert.equal(params({ echo: 0 }).echoSend, 0);
+});
+
+test('params match the Go engine', () => {
+  // The same numbers internal/voice's TestParamsMatchTheBrowser checks.
+  const p = params({ on: true, volume: 150, echo: 50, reverb: 40, warmth: 50, bright: 25, double: 50, tune: 30 });
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  assert.ok(near(p.micGain, 1.5) && near(p.echoSend, 0.35) && near(p.echoFeedback, 0.285) && near(p.reverbSend, 0.34));
+  assert.ok(near(p.warmthDb, 3) && near(p.brightDb, 2) && near(p.doubleMix, 0.35) && p.tune === 30, JSON.stringify(p));
+  const t = tunePlan(30);
+  assert.ok(near(t.amount, 0.5) && near(t.seconds, 0.3 * 0.49 + 0.005), JSON.stringify(t));
+  assert.deepEqual(tunePlan(0), { amount: 0, seconds: 0 });
+  assert.equal(tunePlan(100).amount, 1);
 });
 
 test('presets are valid settings', () => {

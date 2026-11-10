@@ -2,11 +2,12 @@
 // server's own copy, shows "up next" between songs, and tells the server when one ends.
 import { api, connect, fmtTime, icon, save, store } from './live.js';
 import { Mic } from './mic.js';
+import { NativeMic } from './mic-native.js';
 import { LyricsPanel } from './tv-lyrics.js';
 import { KeyShift, keyLabel } from './keyshift.js';
 import { CDGView } from './tv-cdg.js';
 import { Finder } from './tv-search.js';
-import { PRESETS, latencyVerdict, normalize } from './mic-core.js';
+import { KNOBS, PRESETS, TUNE_DELAY_MS, latencyVerdict, normalize } from './mic-core.js';
 
 const $ = (sel) => document.querySelector(sel);
 const video = $('#video');
@@ -485,20 +486,56 @@ function nextBar(s) {
 }
 
 // --- The mic ------------------------------------------------------------------------
-const mic = new Mic({
+// Two ways to run it: in this browser (mic.js), or, when the server is on this computer and
+// has PipeWire, in the server (mic-native.js), which makes the voice far less late.
+const micHandlers = {
   onChange: () => micChanged(),
   onHowl: () => osd('Feedback! Mic turned down'),
-});
+};
+let mic = new Mic(micHandlers);
 mic.settings = normalize(store('mic', {}));
+let nativeMic = { native: false, here: false }; // what the server offers this page
+const micReady = pickMic();
+
+// pickMic switches to the engine the settings and the server call for.
+async function pickMic() {
+  try {
+    nativeMic = await api('/api/mic');
+  } catch {
+    nativeMic = { native: false, here: false };
+  }
+  const want = nativeMic.native && nativeMic.here && mic.settings.lowLatency;
+  if (want === Boolean(mic.native)) return;
+  const settings = mic.settings;
+  if (settings.on) await mic.set({ on: false }).catch(() => {});
+  mic.dispose();
+  mic = want ? new NativeMic(micHandlers) : new Mic(micHandlers);
+  mic.settings = settings;
+  window.karaokeMic = mic;
+  if (settings.on && tv.started) await mic.open();
+  micChanged();
+  if (!$('#mic-panel').hidden) fillDevices();
+}
+
+function micUnsupported() {
+  return mic.native ? '' : Mic.unsupported();
+}
+
+function knobText(k, v) {
+  return k === 'volume' ? `${v}%` : String(v);
+}
 
 function micChanged() {
   save('mic', mic.settings);
   const s = mic.settings;
   $('#mic-on').checked = s.on;
-  for (const k of ['volume', 'echo', 'reverb']) {
+  for (const k of Object.keys(KNOBS)) {
     $(`#mic-${k}`).value = s[k];
-    $(`#mic-${k}-out`).textContent = k === 'volume' ? `${s[k]}%` : s[k];
+    $(`#mic-${k}-out`).textContent = knobText(k, s[k]);
   }
+  $('#mic-lowLatency-row').hidden = !(nativeMic.native && nativeMic.here);
+  $('#mic-lowLatency').checked = s.lowLatency;
+  $('#mic-engine').textContent = micEngineText();
   $('#mic-button').classList.toggle('on', s.on);
   $('#mic-error').hidden = !mic.error;
   $('#mic-error').textContent = mic.error;
@@ -506,19 +543,31 @@ function micChanged() {
   reportSoon();
 }
 
+// micEngineText says where the voice is processed, and how late that makes it.
+function micEngineText() {
+  const tune = mic.settings.tune > 0 ? ` (${TUNE_DELAY_MS} ms of it is Tune)` : '';
+  if (mic.native) {
+    const ms = mic.engineMs ? `about ${Math.round(mic.engineMs)} ms` : 'a few ms';
+    return `Low latency: PipeWire on this computer adds ${ms}${tune}, plus the mic's and speakers' own.`;
+  }
+  if (nativeMic.native && nativeMic.here) return 'In the browser: 60-70 ms late on Linux. Low latency cuts that to about 5.';
+  return `In the browser${tune}.`;
+}
+
 function micCommand(action, value) {
   const s = mic.settings;
+  const knob = action.slice(4); // mic-warmth -> warmth
   const changes = {
     'mic-toggle': { on: !s.on },
     'mic-volume': { volume: s.volume + value, on: true },
-    'mic-echo': { echo: s.echo + value },
-    'mic-reverb': { reverb: s.reverb + value },
     'mic-preset': PRESETS[['dry', 'ktv', 'hall'][value]] || {},
-  }[action];
+  }[action] || (KNOBS[knob] && { [knob]: s[knob] + value });
   if (!changes) return;
   mic.set(changes).then(() => {
     const now = mic.settings;
-    osd(action === 'mic-toggle' ? (now.on ? 'Mic on' : 'Mic off') : `Mic ${now.volume}% · echo ${now.echo} · reverb ${now.reverb}`);
+    if (action === 'mic-toggle') osd(now.on ? 'Mic on' : 'Mic off');
+    else if (KNOBS[knob] && !['volume', 'echo', 'reverb'].includes(knob)) osd(`${KNOBS[knob].label} ${now[knob]}`);
+    else osd(`Mic ${now.volume}% · echo ${now.echo} · reverb ${now.reverb}`);
   });
 }
 
@@ -529,7 +578,7 @@ async function fillDevices() {
     select.replaceChildren(new Option('Default mic', ''), ...devices
       .filter((d) => d.deviceId && d.deviceId !== 'default')
       .map((d, i) => new Option(d.label || `Mic ${i + 1}`, d.deviceId)));
-    select.value = mic.settings.deviceId;
+    select.value = mic.settings[mic.deviceKey || 'deviceId'];
   } catch {
     // No device list until the browser has been allowed to use a mic.
   }
@@ -550,9 +599,10 @@ function meter() {
   requestAnimationFrame(meter);
 }
 
-function initMicPanel() {
+async function initMicPanel() {
   $('#mic-button').append(icon('mic'));
-  const why = Mic.unsupported();
+  await micReady;
+  const why = micUnsupported();
   if (why) {
     $('#mic-error').hidden = false;
     $('#mic-error').textContent = why;
@@ -562,10 +612,15 @@ function initMicPanel() {
   $('#find-button').append(icon('search'));
   $('#find-button').onclick = openFinder;
   $('#mic-on').onchange = (e) => mic.set({ on: e.target.checked });
-  for (const k of ['volume', 'echo', 'reverb']) {
+  for (const k of Object.keys(KNOBS)) {
     $(`#mic-${k}`).oninput = (e) => mic.set({ [k]: Number(e.target.value) });
   }
-  $('#mic-device').onchange = (e) => mic.set({ deviceId: e.target.value, on: true }).then(fillDevices);
+  $('#mic-lowLatency').onchange = async (e) => {
+    mic.settings = { ...mic.settings, lowLatency: e.target.checked };
+    await pickMic();
+    micChanged();
+  };
+  $('#mic-device').onchange = (e) => mic.set({ [mic.deviceKey || 'deviceId']: e.target.value, on: true }).then(fillDevices);
   for (const b of document.querySelectorAll('[data-preset]')) b.onclick = () => mic.set(PRESETS[b.dataset.preset]);
   $('#mic-measure').onclick = async () => {
     $('#mic-measure').disabled = true;
@@ -594,10 +649,12 @@ function start() {
   tv.started = true;
   document.body.classList.add('started');
   loadYouTubeAPI().catch((err) => console.warn(err.message)); // a head start; songs retry
-  if (!Mic.unsupported()) {
-    mic.context(); // the click that started the TV is what lets audio run
+  // The click that started the TV is what lets audio run, here or later.
+  micReady.then(() => {
+    if (micUnsupported()) return;
+    mic.context();
     if (mic.settings.on) mic.open().then(() => micChanged());
-  }
+  });
   route();
   report();
 }

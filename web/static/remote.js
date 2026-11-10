@@ -229,6 +229,7 @@ function renderMic() {
     micRefs = {
       toggle: el('button', { type: 'button', class: 'mic-toggle', onclick: () => command('mic-toggle') }, icon('mic'), el('span')),
       volume: el('output'), echo: el('output'), reverb: el('output'),
+      warmth: el('output'), bright: el('output'), double: el('output'), tune: el('output'),
       note: el('div', { class: 'hint' }),
     };
     card.replaceChildren(
@@ -238,14 +239,20 @@ function renderMic() {
       step('Mic', 'mic-volume', 10, micRefs.volume),
       step('Echo', 'mic-echo', 10, micRefs.echo),
       step('Reverb', 'mic-reverb', 10, micRefs.reverb),
+      el('h3', { class: 'mic-sub', text: 'Voice' }),
+      step('Warmth', 'mic-warmth', 10, micRefs.warmth),
+      step('Bright', 'mic-bright', 10, micRefs.bright),
+      step('Double', 'mic-double', 10, micRefs.double),
+      step('Tune', 'mic-tune', 10, micRefs.tune),
       micRefs.note);
   }
   micRefs.toggle.classList.toggle('on', m.on);
   micRefs.toggle.lastChild.textContent = m.on ? 'Mic on' : 'Mic off';
   micRefs.volume.textContent = `${m.volume}%`;
-  micRefs.echo.textContent = m.echo;
-  micRefs.reverb.textContent = m.reverb;
-  micRefs.note.textContent = m.error || (m.latencyMs ? `Delay ${m.latencyMs} ms${m.device ? ' · ' + m.device : ''}` : m.device || '');
+  for (const k of ['echo', 'reverb', 'warmth', 'bright', 'double', 'tune']) micRefs[k].textContent = m[k] ?? 0;
+  const where = m.engine === 'native' ? 'Low latency' : '';
+  const delay = m.latencyMs ? `Delay ${m.latencyMs} ms` : '';
+  micRefs.note.textContent = m.error || [delay, where, m.device].filter(Boolean).join(' · ');
 }
 
 function setKey(delta) {

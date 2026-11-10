@@ -584,3 +584,36 @@ func TestLyrics(t *testing.T) {
 		t.Error("features.lyrics is off")
 	}
 }
+
+func TestAKeyChangeNeedsTheDownload(t *testing.T) {
+	h := newHarness(t, true)
+	cur := h.add(embedOK, "an").Entry
+	if got := h.state().Current.Play.Mode; got != "embed" {
+		t.Fatalf("mode = %s", got)
+	}
+	if resp, _ := h.do("POST", "/api/queue/"+cur.QID+"/key", `{"key":2}`); resp.StatusCode != 204 {
+		t.Fatalf("set key = %d", resp.StatusCode)
+	}
+	st := h.state()
+	if st.Current.Key != 2 || st.Current.Play.Mode != "wait" {
+		t.Errorf("after a key change: key %d, mode %s; want 2 and wait for the copy", st.Current.Key, st.Current.Play.Mode)
+	}
+	if got := h.dl.lastWanted(); len(got) != 1 || got[0] != embedOK {
+		t.Errorf("wanted = %v, want the song in its new key downloaded", got)
+	}
+	h.dl.setReady(embedOK)
+	h.srv.DownloadChanged()
+	if got := h.state().Current.Play; got.Mode != "file" {
+		t.Errorf("with the copy: %+v", got)
+	}
+	if resp, _ := h.do("POST", "/api/queue/"+cur.QID+"/key", `{}`); resp.StatusCode != 400 {
+		t.Errorf("no key = %d", resp.StatusCode)
+	}
+}
+
+func (f *fakeDownloader) setReady(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.status[id] = media.Status{State: "ready"}
+	f.files[id] = "/nonexistent/" + id + ".mp4"
+}

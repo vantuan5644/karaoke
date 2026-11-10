@@ -16,6 +16,7 @@ songs from their phones. Nothing to install on phones or the TV, no account, no 
 - **Lyrics beside the video**, plain text with no timing, found on [LRCLIB](https://lrclib.net)
   from the video's title (Vietnamese included), with a pick-your-own search on the phone when
   the match is wrong.
+- **Key change**, up or down six semitones from the phone, at the same tempo.
 - **One binary** for Linux, macOS and Windows, with the web UI inside it, or a Docker image.
 
 ## Run it
@@ -112,11 +113,24 @@ On 84 real karaoke titles (English and Vietnamese) it picked the right song ever
 is wrong, **Wrong lyrics?** on the phone searches LRCLIB by hand; *No lyrics* turns them off
 for that song. With `-lyrics=false` the server never contacts LRCLIB.
 
+## Key change
+
+The **♭/♯** buttons on the phone's now-playing card (or **[** and **]** on the TV) move the
+song up or down a semitone, as far as six either way. The TV shifts the sound itself with
+[Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) in an AudioWorklet, so the
+tempo stays the same. It needs the song's downloaded copy, because YouTube's embedded player
+keeps its sound to itself: a song playing embedded keeps going in the original key while the
+copy downloads (a few seconds), then carries on from the same spot in the new key. In the new
+key the sound trails the picture by about 0.12 s, the shifter's processing time; in the
+original key it bypasses the shifter. The key belongs to that turn in the queue, so the next
+singer starts in the original key. Downloads must be on (`yt-dlp` found) for it.
+
 ## How playback is chosen
 
 For each song the server decides, and the TV follows:
 
-1. A downloaded copy, if there is one: it starts at once and has no ads.
+1. A downloaded copy, if there is one: it starts at once and has no ads. A song in another key
+   always waits for one.
 2. Otherwise YouTube's embedded player, if the video allows it. Before a song is queued the
    server asks YouTube's oEmbed endpoint, which answers 401 for videos that block embedding.
 3. Otherwise the TV waits while yt-dlp downloads it (720p MP4, usually a few seconds). If the
@@ -142,6 +156,7 @@ make dist     # binaries for every platform in dist/
 
 Layout: `internal/room` (queue and its saved state), `internal/youtube` (keyless search and the
 embed check), `internal/media` (yt-dlp downloads and the cache), `internal/lyrics` (LRCLIB and
-matching titles to songs; `LRCLIB_LIVE=1 go test ./internal/lyrics` checks the real titles), `internal/server` (HTTP API,
+matching titles to songs; `LRCLIB_LIVE=1 go test ./internal/lyrics` checks the real titles),
+`web/static/vendor` (Signalsmith Stretch; see `THIRD_PARTY.md`), `internal/server` (HTTP API,
 live events over SSE, QR codes), `web/` (the phone remote `index.html` and the TV `tv.html`,
 plain ES modules, no build step). Design notes and measurements: `docs/plan.md`.

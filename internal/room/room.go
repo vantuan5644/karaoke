@@ -34,6 +34,7 @@ type Entry struct {
 	Singer   string    `json:"singer,omitempty"`
 	AddedAt  time.Time `json:"addedAt"`
 	PlayedAt time.Time `json:"playedAt,omitempty"`
+	Key      int       `json:"key,omitempty"` // semitones up or down from the original, for this performance
 }
 
 // Settings are the room's, shared by every phone and the TV.
@@ -143,6 +144,49 @@ func (r *Room) Add(song Song, singer string, next bool) (Entry, error) {
 	return entry, err
 }
 
+// MaxKey is the furthest a song's key moves either way: six semitones up or down reach
+// every key.
+const MaxKey = 6
+
+// SetKey sets how many semitones an entry playing or queued is moved up or down.
+func (r *Room) SetKey(qid string, key int) error {
+	key = max(-MaxKey, min(MaxKey, key))
+	return r.change(func() error {
+		return r.editEntry(qid, func(e *Entry) bool {
+			if e.Key == key {
+				return false
+			}
+			e.Key = key
+			return true
+		})
+	})
+}
+
+// editEntry runs edit on the entry playing or queued with that qid, copying it first. edit
+// says whether it changed anything.
+func (r *Room) editEntry(qid string, edit func(*Entry) bool) error {
+	if r.current != nil && r.current.QID == qid {
+		c := *r.current
+		if !edit(&c) {
+			return errStale
+		}
+		r.current = &c
+		return nil
+	}
+	for i, e := range r.queue {
+		if e.QID == qid {
+			if !edit(&e) {
+				return errStale
+			}
+			queue := append([]Entry(nil), r.queue...)
+			queue[i] = e
+			r.queue = queue
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
 // NoLyrics, as a LyricsID, means the singers chose to see no lyrics for the song.
 const NoLyrics = -1
 
@@ -153,29 +197,13 @@ func (r *Room) SetLyrics(qid string, id int) error {
 		return ErrNotFound
 	}
 	return r.change(func() error {
-		set := func(e *Entry) error {
+		return r.editEntry(qid, func(e *Entry) bool {
 			if e.Song.LyricsID == id {
-				return errStale
+				return false
 			}
 			e.Song.LyricsID = id
-			return nil
-		}
-		if r.current != nil && r.current.QID == qid {
-			c := *r.current
-			err := set(&c)
-			r.current = &c
-			return err
-		}
-		for i, e := range r.queue {
-			if e.QID == qid {
-				queue := append([]Entry(nil), r.queue...)
-				err := set(&e)
-				queue[i] = e
-				r.queue = queue
-				return err
-			}
-		}
-		return ErrNotFound
+			return true
+		})
 	})
 }
 

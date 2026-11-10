@@ -3,6 +3,7 @@
 import { api, connect, fmtTime, icon, save, store } from './live.js';
 import { Mic } from './mic.js';
 import { LyricsPanel } from './tv-lyrics.js';
+import { KeyShift, keyLabel } from './keyshift.js';
 import { PRESETS, latencyVerdict, normalize } from './mic-core.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -178,6 +179,7 @@ function onState(state) {
   tv.state = state;
   route();
   lyricsPanel.sync(state);
+  keyChanged(state.current);
 }
 
 function route() {
@@ -228,8 +230,14 @@ function apply(cur) {
   if (tv.phase === 'error') return; // already on its way out
   // A song playing keeps the player it started in: its download finishing, being retried or
   // being switched on mid-song would otherwise stop it or start it over. Real trouble comes
-  // from the players themselves (youtubeError, the video's error event).
-  if (tv.phase === 'playing' && (tv.mode || tv.starting === cur.qid)) return;
+  // from the players themselves (youtubeError, the video's error event). The one exception
+  // is a key change, which only a download can do: the song carries on from it, where the
+  // video was.
+  if (tv.phase === 'playing' && (tv.mode || tv.starting === cur.qid)) {
+    if (tv.mode === 'file') shiftKey(cur);
+    else if (tv.mode === 'embed' && cur.key && cur.play.mode === 'file') startFile(cur, cur.play.url, tv.yt?.getCurrentTime?.() || 0);
+    return;
+  }
   let play = cur.play;
   if (play.mode === 'embed' && tv.embedFailed === cur.qid) play = { mode: 'wait' }; // until the server catches up
   switch (play.mode) {
@@ -273,15 +281,50 @@ async function startEmbed(cur) {
   nowSinging(cur);
 }
 
-function startFile(cur, url) {
+// startFile plays the downloaded copy; at, when set, carries on from there (a key change
+// mid-song), without the now-singing banner again.
+function startFile(cur, url, at = 0) {
   setPhase('playing');
   if (tv.yt) tv.yt.stopVideo();
   setMode('file');
   tv.url = url;
   video.src = url;
+  if (at > 0) video.addEventListener('loadedmetadata', () => { video.currentTime = at; }, { once: true });
   applyVolume();
+  shiftKey(cur);
   video.play().catch((err) => console.warn('play:', err));
-  nowSinging(cur);
+  if (!at) nowSinging(cur);
+  else osd(keyLabel(cur.key || 0)); // the copy a key change was waiting for is here
+}
+
+// --- Key -----------------------------------------------------------------------------
+const keyShift = new KeyShift(video);
+
+function shiftKey(cur) {
+  const want = cur.key || 0;
+  if (keyShift.semitones === want && (want === 0 || keyShift.stretch)) return;
+  keyShift.set(want).catch((err) => osd(`Key change failed: ${err.message}`));
+}
+
+// keyChanged tells the room when the singers move the key, and why it may take a moment.
+function keyChanged(cur) {
+  const key = cur?.key || 0;
+  if (!cur || cur.qid !== tv.keyQid) {
+    tv.keyQid = cur?.qid;
+    tv.key = key;
+    return;
+  }
+  if (key === tv.key) return;
+  tv.key = key;
+  const waiting = tv.mode === 'embed' && key && cur.play.mode !== 'file';
+  osd(waiting ? `${keyLabel(key)}: getting the song's copy first` : keyLabel(key));
+}
+
+function changeKey(delta) {
+  const cur = tv.state?.current;
+  if (!cur) return;
+  api(`/api/queue/${encodeURIComponent(cur.qid)}/key`, { method: 'POST', body: { key: (cur.key || 0) + delta } })
+    .catch((err) => osd(err.message));
 }
 
 function nowSinging(cur) {
@@ -547,6 +590,7 @@ document.addEventListener('keydown', (e) => {
     ArrowUp: () => onCommand({ action: 'volume', value: 5 }), ArrowDown: () => onCommand({ action: 'volume', value: -5 }),
     m: () => onCommand({ action: 'mute' }), f: toggleFullscreen, v: toggleMicPanel, l: toggleLyrics,
     PageDown: () => lyricsPanel.scroll(1), PageUp: () => lyricsPanel.scroll(-1),
+    '[': () => changeKey(-1), ']': () => changeKey(1),
     n: () => tv.state?.current && finish(tv.state.current.qid),
   };
   const run = keys[e.key] || keys[e.key.toLowerCase()];
@@ -584,4 +628,5 @@ init();
 window.karaokeTV = tv;
 window.karaokeMic = mic;
 window.karaokeLyrics = lyricsPanel;
+window.karaokeKey = keyShift;
 window.fmtTime = fmtTime;

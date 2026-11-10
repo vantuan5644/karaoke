@@ -48,10 +48,10 @@ func (s *Server) snapshot() Snapshot {
 		snap.History = snap.History[:historyShown]
 	}
 	if st.Current != nil {
-		snap.Current = &EntryView{Entry: *st.Current, Play: s.playFor(st.Current.Song, st.Settings)}
+		snap.Current = &EntryView{Entry: *st.Current, Play: s.playFor(*st.Current, st.Settings)}
 	}
 	for i, e := range st.Queue {
-		snap.Queue[i] = EntryView{Entry: e, Play: s.playFor(e.Song, st.Settings)}
+		snap.Queue[i] = EntryView{Entry: e, Play: s.playFor(e, st.Settings)}
 	}
 	if p, ok := s.player(); ok {
 		snap.Player = &p
@@ -66,7 +66,8 @@ func (s *Server) features() Features {
 // playFor picks how a song plays. A downloaded copy always wins (it starts at once and has
 // no ads); otherwise YouTube's own player, unless the video refuses to embed or the room
 // asked for downloads, in which case the TV waits for the copy.
-func (s *Server) playFor(song room.Song, settings room.Settings) Play {
+func (s *Server) playFor(e room.Entry, settings room.Settings) Play {
+	song := e.Song
 	if song.VideoID == "" {
 		return Play{Mode: "error", Error: "nothing to play"}
 	}
@@ -87,7 +88,8 @@ func (s *Server) playFor(song room.Song, settings room.Settings) Play {
 		}
 		return Play{Mode: "error", Error: "Download failed: " + st.Error}
 	}
-	if song.Embeddable && !settings.AlwaysDownload {
+	// A song in another key needs its download: YouTube's player keeps its sound to itself.
+	if song.Embeddable && !settings.AlwaysDownload && e.Key == 0 {
 		return Play{Mode: "embed"}
 	}
 	return Play{Mode: "wait", Progress: st.Progress}
@@ -102,7 +104,7 @@ func wanted(st room.State) (download, keep []string) {
 			return
 		}
 		keep = append(keep, e.Song.VideoID)
-		if !e.Song.Embeddable || st.Settings.AlwaysDownload {
+		if !e.Song.Embeddable || st.Settings.AlwaysDownload || e.Key != 0 {
 			download = append(download, e.Song.VideoID)
 		}
 	}

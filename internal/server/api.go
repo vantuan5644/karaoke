@@ -403,3 +403,17 @@ func (l *limiter) allow() bool {
 	l.tokens--
 	return true
 }
+
+func (s *Server) setKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Key *int `json:"key"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if req.Key == nil {
+		writeError(w, http.StatusBadRequest, "key is semitones from the original, -6 to 6")
+		return
+	}
+	s.roomResult(w, s.cfg.Room.SetKey(r.PathValue("qid"), *req.Key))
+}

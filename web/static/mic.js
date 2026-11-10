@@ -2,6 +2,7 @@
 // karaoke echo and a reverb, a limiter, a feedback guard, and a probe that measures how late
 // the singer hears themselves.
 import { CHAIN, HowlGuard, impulse, medianMs, normalize, params } from './mic-core.js';
+import { audioContext } from './audio.js';
 
 // When the mic howls it is turned down by 40%, at most every 3 s and never below 25%: real
 // feedback stops once the gain drops, and a steady tone that is not feedback (a whistle, a
@@ -39,7 +40,7 @@ export class Mic {
   // context makes the AudioContext on first use; it must follow a click, or it stays silent.
   context() {
     if (!this.ctx) {
-      this.ctx = new AudioContext({ latencyHint: 'interactive' });
+      this.ctx = audioContext();
       this.build();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();

@@ -82,8 +82,21 @@ The user asked for all four, PC with a USB mic first (2026-11-10):
    never below 25%. The delay probe is unit-tested against a simulated room (8 to 130 ms
    read back within 1 ms). On omarchy the USB PnP mic is the default source, mono at
    48 kHz, the same rate as the page's AudioContext, so nothing is resampled.
-2. **Key change** for downloaded songs, in the TV page: signalsmith-stretch (MIT, official
-   WASM/AudioWorklet build), semitone shift with formant compensation.
+2. **Key change** (done) for downloaded songs, in the TV page: signalsmith-stretch 1.3.2
+   (MIT, official WASM/AudioWorklet build), vendored in `web/static/vendor`. The library
+   loads its worklet from a `blob:` URL, which the page's CSP refuses, so
+   `tools/signalsmith-worklet.mjs` saves that module as a file and a node test checks the two
+   still agree. The key is per queue entry (`Entry.Key`, -6 to +6); a non-zero key makes the
+   server download the song and plays the copy, and the TV switches from the embed to the copy
+   at the same position. The shifter sits between a `MediaElementSource` and the speakers only
+   while the key is off zero. Formant compensation is left off: most karaoke tracks are
+   instrumental, and it is a voice correction.
+
+   What was tested: in Chromium, under the page's CSP, a 440 Hz tone shifted +2 semitones
+   peaked at 495.1 Hz (493.9 expected; one bin of a 32768-point FFT is 1.5 Hz), with 120 ms of
+   reported latency. On a real song playing embedded, +2 from the phone switched the TV to the
+   download from the same position; +1 then applied live without a restart, and 0 bypassed
+   the shifter.
 3. **Vocal removal** for downloaded songs, on the server: a RoFormer model (BS-RoFormer or
    Mel-Band RoFormer lead for vocals) through python-audio-separator (MIT), on a GPU when
    there is one. Upstream Demucs was archived.

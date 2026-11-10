@@ -119,6 +119,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/lyrics", s.lyricsFor)
 	mux.HandleFunc("GET /api/lyrics/search", s.lyricsSearch)
 	mux.HandleFunc("POST /api/queue/{qid}/lyrics", s.setLyrics)
+	mux.HandleFunc("POST /api/queue/{qid}/key", s.setKey)
 
 	mux.HandleFunc("GET /media/yt/{id}", s.youtubeFile)
 	return securityHeaders(knownHosts(s.cfg.AllowHosts, sameOriginWrites(mux)))

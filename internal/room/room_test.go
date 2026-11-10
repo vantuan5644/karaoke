@@ -246,3 +246,22 @@ func TestSetLyrics(t *testing.T) {
 		t.Errorf("id -2: %v", err)
 	}
 }
+
+func TestSetKey(t *testing.T) {
+	r, _ := testRoom(t)
+	cur, _ := r.Add(song("A"), "an", false)
+	next, _ := r.Add(song("B"), "bo", false)
+	r.SetKey(cur.QID, -2)
+	r.SetKey(next.QID, 99)
+	s := r.State()
+	if s.Current.Key != -2 || s.Queue[0].Key != MaxKey {
+		t.Errorf("keys = %d, %d; want -2 and the cap", s.Current.Key, s.Queue[0].Key)
+	}
+	v := s.Version
+	if r.SetKey(cur.QID, -2); r.State().Version != v {
+		t.Error("the same key again counted as a change")
+	}
+	if err := r.SetKey("nope", 1); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown entry: %v", err)
+	}
+}

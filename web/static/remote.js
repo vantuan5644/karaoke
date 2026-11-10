@@ -158,7 +158,15 @@ function renderNow() {
       position: el('span'),
       duration: el('span'),
       toggle: el('button', { type: 'button', class: 'main', onclick: () => command('toggle') }),
+      key: el('output'),
+      keyNote: el('span', { class: 'hint' }),
     };
+    nowRefs.keyRow = el('div', { class: 'keyrow' },
+      el('span', { class: 'name', text: 'Key' }),
+      el('button', { type: 'button', class: 'act', 'aria-label': 'Key down a semitone', onclick: () => setKey(-1) }, '♭'),
+      nowRefs.key,
+      el('button', { type: 'button', class: 'act', 'aria-label': 'Key up a semitone', onclick: () => setKey(1) }, '♯'),
+      nowRefs.keyNote);
     now.className = 'now';
     now.replaceChildren(
       el('div', { class: 'row' },
@@ -175,7 +183,8 @@ function renderNow() {
         el('button', { type: 'button', 'aria-label': 'Restart the song', onclick: () => command('restart') }, icon('restart')),
         nowRefs.toggle,
         el('button', { type: 'button', 'aria-label': 'Skip to the next song', onclick: skip }, icon('next')),
-        el('button', { type: 'button', 'aria-label': 'Volume up', onclick: () => command('volume', 10) }, icon('volUp'))));
+        el('button', { type: 'button', 'aria-label': 'Volume up', onclick: () => command('volume', 10) }, icon('volUp'))),
+      nowRefs.keyRow);
   }
   const p = view.player && view.player.qid === cur.qid ? view.player : null;
   const duration = p?.duration || cur.song.duration || 0;
@@ -185,6 +194,12 @@ function renderNow() {
   nowRefs.fill.style.width = duration ? `${Math.min(100, (position / duration) * 100)}%` : '0';
   nowRefs.position.textContent = fmtTime(position);
   nowRefs.duration.textContent = fmtTime(duration);
+  const semitones = cur.key || 0;
+  nowRefs.keyRow.hidden = !view.state.features?.download;
+  nowRefs.key.textContent = semitones ? `${semitones > 0 ? '+' : '−'}${Math.abs(semitones)}` : '0';
+  nowRefs.keyNote.textContent = semitones && cur.play.mode === 'wait'
+    ? `getting the song's copy${cur.play.progress ? ` ${Math.round(cur.play.progress * 100)}%` : ''}`
+    : semitones ? '' : 'original';
   if (nowRefs.paused !== paused) {
     nowRefs.paused = paused;
     nowRefs.toggle.setAttribute('aria-label', paused ? 'Play' : 'Pause');
@@ -230,6 +245,12 @@ function renderMic() {
   micRefs.echo.textContent = m.echo;
   micRefs.reverb.textContent = m.reverb;
   micRefs.note.textContent = m.error || (m.latencyMs ? `Delay ${m.latencyMs} ms${m.device ? ' · ' + m.device : ''}` : m.device || '');
+}
+
+function setKey(delta) {
+  const cur = view.state?.current;
+  if (!cur) return;
+  attempt(() => api(`/api/queue/${encodeURIComponent(cur.qid)}/key`, { method: 'POST', body: { key: (cur.key || 0) + delta } }));
 }
 
 async function skip() {

@@ -78,6 +78,14 @@ set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose
 Settings on the phone (gear icon): **Download every song** plays everything from the server's
 copy (no YouTube ads; each song waits for its download), and the length of the "up next" card.
 
+## One computer, no phone
+
+Open only the TV page and press **/** (or the search button in the corner) to search on the
+TV itself. Type, press **Enter** to search and **↓** to pick, then **Enter** adds the song
+(**Shift+Enter** sings it next), under the name in the Singer box. **→** moves to the queue,
+where **Delete** removes a song and **Shift+↑/↓** moves it. **Esc** closes the search. Start the
+server with `-listen 127.0.0.1:8765` to keep it on this computer only.
+
 ## Singing through the computer
 
 Plug a USB mic into the computer that shows the TV page, click the mic button at the bottom

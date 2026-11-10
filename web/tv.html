@@ -25,6 +25,7 @@
       <p class="lead">Scan to pick a song</p>
       <img class="qr big" alt="QR code to open the song picker">
       <p class="join"></p>
+      <p class="here">or press <kbd>/</kbd> to search on this computer</p>
     </div>
   </section>
 
@@ -66,6 +67,27 @@
   </aside>
 
   <button id="mic-button" class="mic-button" type="button" aria-label="Mic settings" title="Mic (V)"></button>
+  <button id="find-button" class="mic-button find-button" type="button" aria-label="Search for a song" title="Search (/)"></button>
+
+  <div id="finder" class="finder" hidden>
+    <div class="finder-box" role="dialog" aria-label="Pick a song">
+      <section class="find">
+        <form id="finder-form" class="finder-bar" role="search">
+          <input id="finder-q" type="search" placeholder="Song or artist" autocomplete="off" aria-label="Song or artist">
+          <input id="finder-singer" placeholder="Singer" maxlength="40" autocomplete="off" aria-label="Singer">
+          <button type="submit">Search</button>
+        </form>
+        <label class="check"><input type="checkbox" id="finder-karaoke"> Karaoke versions only</label>
+        <p id="finder-status" class="status" aria-live="polite"></p>
+        <div id="finder-results" class="finder-list" role="listbox" aria-label="Results"></div>
+      </section>
+      <section class="queue">
+        <h2>Up next <span id="finder-count"></span></h2>
+        <div id="finder-queue" class="finder-list" aria-label="Queue"></div>
+      </section>
+      <p class="finder-keys"><kbd>Enter</kbd> search · <kbd>↓</kbd><kbd>↑</kbd> pick · <kbd>Enter</kbd> add · <kbd>Shift</kbd>+<kbd>Enter</kbd> sing next · <kbd>→</kbd> queue: <kbd>Del</kbd> remove, <kbd>Shift</kbd>+<kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Esc</kbd> close</p>
+    </div>
+  </div>
   <aside id="mic-panel" class="mic-panel" aria-label="Mic" hidden>
     <header>
       <h2>Mic</h2>
@@ -102,7 +124,7 @@
       <span class="big">Start</span>
       <span>Click or press Enter: browsers only play sound after a click</span>
     </button>
-    <p class="keys">Space pause · ← → seek · ↑ ↓ volume · N skip · [ ] key · L lyrics · V mic · F full screen</p>
+    <p class="keys">Space pause · ← → seek · ↑ ↓ volume · N skip · [ ] key · L lyrics · V mic · / search · F full screen</p>
   </section>
 </body>
 </html>

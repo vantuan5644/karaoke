@@ -1,6 +1,7 @@
 // The phone remote: search, queue a song under your name, and drive the TV.
 import { api, connect, el, fmtTime, icon, save, store } from './live.js';
 import { initLyrics } from './remote-lyrics.js';
+import { LIBRARY_LIMIT, addedMessage, badge, canPlay, queueSong, searchLibrary, searchYouTube, songMeta, thumb } from './songs.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = { state: null, player: null, singer: store('singer', ''), more: '', query: '' };
@@ -65,14 +66,11 @@ function showTab(name) {
 
 // --- Search --------------------------------------------------------------
 async function search(append) {
-  const params = new URLSearchParams({ source: 'youtube' });
-  if (append) params.set('more', view.more);
-  else params.set('q', view.query);
-  const local = append ? null : searchLibrary();
-  if ($('#karaoke-only').checked) params.set('karaoke', '1');
+  const features = view.state?.features;
+  const local = append ? null : showLibrary(features);
   const button = append ? $('#more') : $('#search-form button');
   button.disabled = true;
-  const page = await attempt(() => api(`/api/search?${params}`));
+  const page = await attempt(() => searchYouTube({ query: view.query, more: append ? view.more : '', karaoke: $('#karaoke-only').checked }));
   button.disabled = false;
   if (!page) return;
   const list = $('#results');
@@ -89,52 +87,27 @@ async function search(append) {
   }
 }
 
-function canPlay(song) {
-  return song.source === 'library' || song.embeddable || Boolean(view.state?.features?.download);
-}
-
-const FORMATS = { cdg: 'MP3+G', video: 'Video', audio: 'Audio' };
-
-// thumb is a song's picture: YouTube's thumbnail, or for a file on this computer, its kind.
-function thumb(song) {
-  if (song.thumb) return el('img', { src: song.thumb, alt: '', loading: 'lazy', width: 112, height: 63 });
-  return el('div', { class: `thumb file-${song.format || 'video'}`, 'aria-hidden': 'true' }, FORMATS[song.format] || 'File');
-}
-
 // The library: songs in folders on the server's computer, searched there (fast, no quota).
-async function searchLibrary() {
-  const box = $('#library-results');
-  const count = view.state?.features?.library || 0;
-  if (!count || !view.query) {
-    box.hidden = true;
-    $('#yt-heading').hidden = true;
-    return 0;
-  }
-  const page = await attempt(() => api(`/api/search?${new URLSearchParams({ source: 'library', q: view.query })}`));
-  const found = page?.results || [];
+async function showLibrary(features) {
+  const found = (await attempt(() => searchLibrary(view.query, features))) || [];
   $('#lib-results').replaceChildren(...found.map(resultItem));
-  $('#lib-count').textContent = found.length >= 40 ? '40+' : String(found.length);
-  box.hidden = found.length === 0;
+  $('#lib-count').textContent = found.length >= LIBRARY_LIMIT ? `${LIBRARY_LIMIT}+` : String(found.length);
+  $('#library-results').hidden = found.length === 0;
   $('#yt-heading').hidden = found.length === 0;
   if (found.length) $('#search-hint').hidden = true;
   return found.length;
 }
 
 function resultItem(song) {
-  const playable = canPlay(song);
-  const meta = [song.artist, fmtTime(song.duration), song.views, song.where].filter(Boolean).join(' · ');
-  let badge = null;
-  if (song.source !== 'library' && !song.embeddable) {
-    badge = playable
-      ? el('span', { class: 'badge dl', text: 'Downloads first', title: "This video can't play embedded, so the server downloads it" })
-      : el('span', { class: 'badge err', text: "Can't play here", title: 'It refuses to embed, and the server has no yt-dlp' });
-  }
+  const features = view.state?.features;
+  const playable = canPlay(song, features);
+  const note = badge(song, features);
   return el('li', { class: `item${playable ? '' : ' blocked'}` },
     thumb(song),
     el('div', { class: 'body' },
       el('div', { class: 'title', text: song.title }),
-      el('div', { class: 'meta', text: meta }),
-      badge),
+      el('div', { class: 'meta', text: songMeta(song) }),
+      note && el('span', { class: `badge ${note.kind}`, text: note.text, title: note.title })),
     el('div', { class: 'actions' },
       el('button', { class: 'act add', type: 'button', disabled: !playable, 'aria-label': 'Add to the queue', onclick: () => add(song, false) }, icon('plus')),
       el('button', { class: 'act', type: 'button', disabled: !playable, 'aria-label': 'Sing next', title: 'Sing next', onclick: () => add(song, true) }, icon('top'))));
@@ -142,10 +115,8 @@ function resultItem(song) {
 
 async function add(song, next) {
   if (!view.singer && !(await askName())) return;
-  const added = await attempt(() => api('/api/queue', { method: 'POST', body: { song, singer: view.singer, next } }));
-  if (!added) return;
-  const n = added.ahead;
-  toast(n === 0 ? `Up now: ${added.entry.song.title}` : n === 1 ? 'Added: it sings next' : `Added: ${n - 1} song${n === 2 ? '' : 's'} before it`);
+  const added = await attempt(() => queueSong(song, view.singer, next));
+  if (added) toast(addedMessage(added));
 }
 
 // --- Now playing ---------------------------------------------------------

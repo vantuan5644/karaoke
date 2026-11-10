@@ -5,6 +5,7 @@ import { Mic } from './mic.js';
 import { LyricsPanel } from './tv-lyrics.js';
 import { KeyShift, keyLabel } from './keyshift.js';
 import { CDGView } from './tv-cdg.js';
+import { Finder } from './tv-search.js';
 import { PRESETS, latencyVerdict, normalize } from './mic-core.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -182,6 +183,7 @@ function onState(state) {
   route();
   lyricsPanel.sync(state);
   keyChanged(state.current);
+  finder.update(state);
 }
 
 function route() {
@@ -557,6 +559,8 @@ function initMicPanel() {
     for (const input of document.querySelectorAll('#mic-panel input, #mic-panel select, #mic-panel button')) input.disabled = true;
   }
   $('#mic-button').onclick = toggleMicPanel;
+  $('#find-button').append(icon('search'));
+  $('#find-button').onclick = openFinder;
   $('#mic-on').onchange = (e) => mic.set({ on: e.target.checked });
   for (const k of ['volume', 'echo', 'reverb']) {
     $(`#mic-${k}`).oninput = (e) => mic.set({ [k]: Number(e.target.value) });
@@ -603,7 +607,23 @@ function toggleFullscreen() {
   else document.documentElement.requestFullscreen().catch(() => {});
 }
 
+// --- Search on this computer ----------------------------------------------------------
+const finder = new Finder($('#finder'), { features: () => tv.state?.features, notify: osd });
+
+// openFinder opens the search; a first key or click also starts the TV (its sound needs one).
+function openFinder() {
+  if (!tv.started) start();
+  finder.show();
+}
+
 document.addEventListener('keydown', (e) => {
+  // The mic panel's fields keep their keys (arrows move a slider, not the song).
+  if (e.target.closest?.('input, select, textarea') && e.key !== 'Escape') return;
+  if (e.key === '/' || (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey)) {
+    e.preventDefault();
+    openFinder();
+    return;
+  }
   if (!tv.started) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); }
     return;
@@ -654,4 +674,5 @@ window.karaokeMic = mic;
 window.karaokeLyrics = lyricsPanel;
 window.karaokeKey = keyShift;
 window.karaokeCDG = cdgView;
+window.karaokeFinder = finder;
 window.fmtTime = fmtTime;

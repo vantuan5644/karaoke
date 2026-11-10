@@ -76,7 +76,7 @@ body:not(.started) .splash .logo { display: none; }
 }
 .nextbar.show { opacity: 1; transform: translate(-50%, 0); }
 .osd {
-  position: absolute; right: 3vw; top: 4vh; padding: .5em 1em; border-radius: .6em;
+  position: absolute; z-index: 30; right: 3vw; top: 4vh; padding: .5em 1em; border-radius: .6em;
   background: rgb(0 0 0 / .7); opacity: 0; transition: opacity .3s; pointer-events: none; font-variant-numeric: tabular-nums;
 }
 .osd.show { opacity: 1; }
@@ -150,3 +150,56 @@ body.started.lyrics-open:not(.phase-idle) .osd { right: calc(var(--lyrics-w) + 2
 .lyrics-panel .text p.gap { height: .55em; }
 .lyrics-panel .text p.note { color: var(--muted); font-size: 2.4vh; }
 .lyrics-panel .source { margin: 1.2vh 0 0; color: var(--muted); font-size: .6em; opacity: .7; }
+
+/* Search on the TV itself (/), for one computer as both screen and remote */
+.find-button { left: calc(2vw + 3.2em); }
+body.hide-cursor .find-button { opacity: 0; }
+.splash .here { color: var(--muted); font-size: .95em; margin-top: 1.4em; }
+kbd { font: inherit; font-size: .85em; padding: .05em .4em; border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 5px; background: var(--panel-2); color: var(--text); }
+.finder { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgb(0 0 0 / .62);
+  backdrop-filter: blur(6px); font-size: .72em; cursor: default; }
+.finder-box { width: min(1500px, 92vw); height: min(88vh, 1000px); display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-rows: 1fr auto; gap: 0 1.6em; padding: 1.4em 1.6em 1em; border-radius: var(--radius);
+  background: rgb(18 13 29 / .97); border: 1px solid var(--line); box-shadow: 0 2em 6em rgb(0 0 0 / .6); }
+.finder .find, .finder .queue { display: flex; flex-direction: column; min-height: 0; }
+.finder-bar { display: flex; gap: .6em; }
+.finder-bar input { flex: 1; min-width: 0; padding: .6em .8em; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel-2); outline: none; }
+.finder-bar #finder-singer { flex: 0 0 9em; }
+.finder-bar input:focus { border-color: var(--accent); }
+.finder-bar button { padding: .6em 1.2em; border: 0; border-radius: 10px; font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.finder .check { display: flex; align-items: center; gap: .5em; margin: .7em 0 0; color: var(--muted); }
+.finder .status { margin: .5em 0; min-height: 1.4em; color: var(--muted); }
+.finder-list { flex: 1; overflow: auto; min-height: 0; scrollbar-width: thin; padding-right: .3em; }
+.finder-list h3 { margin: .8em 0 .3em; font-size: .8em; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.finder .row { display: flex; align-items: center; gap: .9em; padding: .45em .6em; border-radius: 10px;
+  border: 2px solid transparent; cursor: pointer; outline: none; }
+.finder .row:hover { background: var(--panel); }
+.finder .row:focus { border-color: var(--accent); background: var(--panel-2); }
+.finder .row.blocked { opacity: .45; }
+.finder .row img, .finder .row .thumb { width: 7em; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; flex: none; background: #000; }
+.finder .thumb { display: grid; place-items: center; font-size: .7em; font-weight: 700; letter-spacing: .04em; }
+.finder .thumb.file-cdg { background: linear-gradient(135deg, #5b2a86, #a23b72); }
+.finder .thumb.file-video { background: linear-gradient(135deg, #1f4e79, #2d7d9a); }
+.finder .thumb.file-audio { background: linear-gradient(135deg, #3d5a3c, #6a8f4e); }
+.finder .row .body { flex: 1; min-width: 0; }
+.finder .row .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finder .row .meta { color: var(--muted); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finder .badge { display: inline-block; margin-top: .2em; font-size: .75em; padding: .05em .5em; border-radius: 1em; background: var(--panel-2); color: var(--warn); }
+.finder .badge.err { color: var(--err); }
+.finder .added { color: var(--ok); font-size: .85em; white-space: nowrap; }
+.finder .actions { display: flex; gap: .3em; }
+.finder .actions button { width: 2.2em; height: 2.2em; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.finder .actions button:hover:not(:disabled) { color: #fff; border-color: var(--accent); }
+.finder .actions .icon { width: 1.2em; height: 1.2em; fill: currentColor; }
+.finder .row.more { justify-content: center; color: var(--accent); font-weight: 600; }
+.finder .queue h2 { margin: .3em 0 .6em; font-size: 1.1em; }
+.finder .queue .now { padding: .5em .6em; margin-bottom: .5em; border-radius: 10px; background: var(--panel); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.finder .queue .now .label { color: var(--accent); font-weight: 700; }
+.finder .queue .now .who, .finder .queue .empty { color: var(--muted); }
+.finder .queue .n { width: 1.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.finder-keys { grid-column: 1 / -1; margin: .8em 0 0; color: var(--muted); font-size: .85em; text-align: center; }

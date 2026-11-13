@@ -2,6 +2,30 @@
 /karaoke.exe
 /dist/
 /node_modules/
+# Reproducible dependency checksums are source, including inside homelab.
+!go.sum
+
+# Local settings, credentials, saved queues and downloaded media.
+.env
+.env.*
+!.env.example
+/state.json
+/state.json.*
+/data/
+/cache/
+cookies*.txt
+*.pem
+*.key
+*.crt
+*.log
+*.prof
+
+# Local editor and assistant state.
+/.idea/
+/.vscode/
+/.claude/
+/.codex/
 *.test
 *.out
 .DS_Store
+Thumbs.db

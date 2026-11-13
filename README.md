@@ -1,13 +1,14 @@
 # Karaoke
 
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](LICENSE)
+
 A self-hosted karaoke night in a browser. Run one small program on a computer, open its TV
 page on the screen everyone watches, and guests scan the QR code to search YouTube and queue
 songs from their phones. Nothing to install on phones or the TV, no account, no API key.
 
 - **YouTube search** without an API key, with "karaoke" added to the query so sing-along
   versions come first.
-- **Videos that refuse to embed still play.** About 40% of the top karaoke results (Sing King,
-  for one) block YouTube's embedded player. The server spots them before they are queued and
+- **Download playback** for videos that refuse YouTube's embedded player. The server checks them before they are queued and
   downloads them with [yt-dlp](https://github.com/yt-dlp/yt-dlp) while they wait their turn.
 - **One shared queue**, live on every phone: add under your name, sing next, reorder, remove,
   skip, pause, volume.
@@ -23,12 +24,20 @@ songs from their phones. Nothing to install on phones or the TV, no account, no 
 
 ## Run it
 
-Download the binary for your system from the releases page, or build it (Go 1.23+):
+Build from source with **Go 1.26 or newer** (the minimum is recorded in `go.mod`):
 
 ```sh
+git clone https://github.com/vantuan5644/karaoke.git
+cd karaoke
 go build -o karaoke .
 ./karaoke -open        # starts on :8765 and opens the TV page
 ```
+
+On Windows, build with `go build -o karaoke.exe .` and run `.\karaoke.exe -open` in
+PowerShell. The web UI is embedded; Node.js is only needed to run its tests.
+Packaged builds, when published, appear on the
+[releases page](https://github.com/vantuan5644/karaoke/releases). Extract the archive for
+your OS and CPU; it includes the binary, instructions and license notices.
 
 Then:
 
@@ -55,6 +64,16 @@ docker compose up -d       # or: docker build -t karaoke . && docker run -p 8765
 
 The image brings yt-dlp, deno and ffmpeg. Because the container can't see your LAN address,
 set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose.yaml`).
+The low latency PipeWire mic runs in a native Linux desktop session; the container uses
+the TV browser's microphone instead.
+
+### Linux launcher
+
+`./run.sh` asks whether to build first, then opens the TV page. `./run.sh build` always
+builds; `./run.sh run` uses the existing binary. It binds to `127.0.0.1:8765` by default.
+For phones on your LAN, use `LISTEN=:8765 ./run.sh`. `OPEN=0` keeps the browser closed.
+The launcher can stop an existing Karaoke process on the chosen port, including without
+a prompt when it has no terminal. Run the binary directly to manage its lifetime yourself.
 
 ## Options
 
@@ -198,8 +217,8 @@ Rhapsody`) dropped. Searching matches the start of each word, without accents ("
 finds "Nắng Ấm Xa Dần"), across artist, title and folder names, and library hits show above
 YouTube's on the phone. The folders are read again every two minutes, so new files show up
 without a restart. Zipped MP3+G (`.zip`) is not read yet: unzip it first. With `ffprobe`
-(part of ffmpeg) installed, a song's length is measured when it is queued. Library files never
-leave the machine: the TV plays them from the server.
+(part of ffmpeg) installed, a song's length is measured when it is queued. The server streams
+library files to connected TV browsers.
 
 ## Key change
 
@@ -235,9 +254,17 @@ Other websites' pages can't use it either: writes must be JSON (which a cross-si
 send without permission the server never gives), no page can frame it, and requests that name
 a host the server doesn't know are refused, which stops DNS rebinding. Addresses, `localhost`,
 bare machine names and home or VPN names (`.local`, `.lan`, `.home.arpa`, `.ts.net`) always
-work; add any other name with `-allow-host`. Every request body is validated. Downloads are for playing at home; respect YouTube's terms and the rights holders.
+work; add any other name with `-allow-host`. Every request body is validated. Respect
+YouTube's terms and the rights holders when using downloads.
+
+Search and embedding checks contact YouTube; the TV player and thumbnails also load from
+YouTube. Enabled lyric lookups contact LRCLIB. The queue stores singer names and song history
+in the data directory, and downloads stay in the cache directory. Microphone audio is
+processed by the TV browser or the local PipeWire engine. See [SECURITY.md](SECURITY.md).
 
 ## Develop
+
+Use Go 1.26+ and Node.js 22+. There are no npm dependencies. With Make installed:
 
 ```sh
 make test     # Go tests with the race detector, plus the web UI's node tests
@@ -251,4 +278,19 @@ matching titles to songs; `LRCLIB_LIVE=1 go test ./internal/lyrics` checks the r
 `internal/voice` (the native mic: the vocal chain, pitch correction and the PipeWire pipeline),
 `web/static/vendor` (Signalsmith Stretch and cdgraphics; see `THIRD_PARTY.md`), `internal/server` (HTTP API,
 live events over SSE, QR codes), `web/` (the phone remote `index.html` and the TV `tv.html`,
-plain ES modules, no build step). Design notes and measurements: `docs/plan.md`.
+plain ES modules, no build step). Read [CONTRIBUTING.md](CONTRIBUTING.md) for direct test
+commands and packaging, and [docs/architecture.md](docs/architecture.md) for design details.
+
+## License
+
+Copyright (c) 2026 Tuan Tran and contributors.
+
+Karaoke's original source and documentation are licensed under
+[Creative Commons Attribution-NonCommercial 4.0 International](https://creativecommons.org/licenses/by-nc/4.0/)
+([CC-BY-NC-4.0](LICENSE)). You may share and adapt them for noncommercial purposes with
+attribution and an indication of changes, subject to the full license terms. Attribute
+the project to Tuan Tran and contributors and link to
+[this repository](https://github.com/vantuan5644/karaoke).
+
+Third-party components keep their own licenses; see [THIRD_PARTY.md](THIRD_PARTY.md).
+Music, videos and lyrics are covered by their respective rights holders' terms.

@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public YouTube search pagination value in the recorded parser fixture (also in history)"
+condition = "AND"
+paths = ['''^internal/youtube/testdata/search\.json$''']
+regexTarget = "secret"
+regexes = ['''^Eq4DEhlib2hlbWlhbiByaGFwc29keSBrYXJhb2tl$''']

@@ -483,7 +483,7 @@ func TestClean(t *testing.T) {
 }
 
 func TestAddressRankPrefersTheLAN(t *testing.T) {
-	order := []string{"192.168.1.2", "10.0.0.4", "172.17.0.1", "100.69.74.46", "8.8.8.8"}
+	order := []string{"192.168.1.2", "10.0.0.4", "172.17.0.1", "100.64.0.10", "203.0.113.1"}
 	for i := 1; i < len(order); i++ {
 		a, b := addressRank(parseIP(order[i-1])), addressRank(parseIP(order[i]))
 		if a >= b {

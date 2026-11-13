@@ -12,6 +12,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}"
 
 FROM debian:trixie-slim
 ARG TARGETARCH
+LABEL org.opencontainers.image.title="Karaoke" \
+      org.opencontainers.image.source="https://github.com/vantuan5644/karaoke" \
+      org.opencontainers.image.licenses="CC-BY-NC-4.0"
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg unzip \
  && rm -rf /var/lib/apt/lists/*
@@ -28,6 +31,8 @@ RUN set -eux; \
     unzip -q /tmp/deno.zip -d /usr/local/bin; rm /tmp/deno.zip; \
     yt-dlp --version; deno --version
 COPY --from=build /out/karaoke /usr/local/bin/karaoke
+COPY LICENSE THIRD_PARTY.md /usr/share/licenses/karaoke/
+COPY LICENSES/ /usr/share/licenses/karaoke/LICENSES/
 RUN useradd --system --create-home --home-dir /data karaoke
 USER karaoke
 VOLUME ["/data"]

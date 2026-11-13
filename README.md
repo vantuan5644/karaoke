@@ -2,295 +2,64 @@
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](LICENSE)
 
-A self-hosted karaoke night in a browser. Run one small program on a computer, open its TV
-page on the screen everyone watches, and guests scan the QR code to search YouTube and queue
-songs from their phones. Nothing to install on phones or the TV, no account, no API key.
+Karaoke on your TV, controlled from your phone. Run the server on one computer,
+scan the QR code, and start queuing songs. No accounts or API keys.
 
-- **YouTube search** without an API key, with "karaoke" added to the query so sing-along
-  versions come first.
-- **Download playback** for videos that refuse YouTube's embedded player. The server checks them before they are queued and
-  downloads them with [yt-dlp](https://github.com/yt-dlp/yt-dlp) while they wait their turn.
-- **One shared queue**, live on every phone: add under your name, sing next, reorder, remove,
-  skip, pause, volume.
-- **The TV page** shows an "up next" card with the singer's name between songs, the song full
-  screen, and who is next near the end.
-- **Lyrics beside the video**, plain text with no timing, found on [LRCLIB](https://lrclib.net)
-  from the video's title (Vietnamese included), with a pick-your-own search on the phone when
-  the match is wrong.
-- **Your own karaoke files** beside YouTube: point it at a folder of videos or MP3+G discs
-  and the phone's search finds them first, accents or not.
-- **Key change**, up or down six semitones from the phone, at the same tempo.
-- **One binary** for Linux, macOS and Windows, with the web UI inside it, or a Docker image.
+| TV player | Phone queue |
+| --- | --- |
+| [<img src="docs/images/tv-player.png" width="520" alt="TV playing a generated Amazing Grace demo track">](docs/images/tv-player.png) | [<img src="docs/images/phone-remote.png" width="280" alt="Phone remote showing queued songs, singer names and queue controls">](docs/images/phone-remote.png) |
 
-## Run it
+*Screenshots use sample singers and a generated demo track.*
 
-Build from source with **Go 1.26 or newer** (the minimum is recorded in `go.mod`):
+## Features
+
+- **Songs:** YouTube search, local videos, audio and MP3+G.
+- **Shared queue:** add your name, sing next, reorder, skip and control playback.
+- **TV view:** fullscreen playback, singer names, up-next cards and optional lyrics.
+- **Key changes:** up or down six semitones, at the same tempo.
+- **[Mic effects](FEATURES.MD):** boost, echo, reverb, voice doubling and auto-tune.
+  Linux desktops can use PipeWire for low latency.
+- **Portable:** one binary for Linux, macOS and Windows, or Docker.
+
+## Run
+
+Get the source:
 
 ```sh
 git clone https://github.com/vantuan5644/karaoke.git
 cd karaoke
-go build -o karaoke .
-./karaoke -open        # starts on :8765 and opens the TV page
 ```
 
-On Windows, build with `go build -o karaoke.exe .` and run `.\karaoke.exe -open` in
-PowerShell. The web UI is embedded; Node.js is only needed to run its tests.
-Packaged builds, when published, appear on the
-[releases page](https://github.com/vantuan5644/karaoke/releases). Extract the archive for
-your OS and CPU; it includes the binary, instructions and license notices.
-
-Then:
-
-1. On the computer connected to the TV, open `http://localhost:8765/tv` and click **Start**
-   (browsers only play sound after a click). Press **F** for full screen.
-2. Guests scan the QR code on the TV, or open the address it shows, e.g.
-   `http://192.168.1.20:8765`, on a phone on the same network.
-
-For videos that refuse to embed, install **yt-dlp**, **ffmpeg** and **deno** (yt-dlp needs a
-JavaScript runtime for YouTube; node works too). Without them the app still runs and plays
-every video that embeds; the rest show "Can't play here".
+Run with **Go 1.26+**:
 
 ```sh
-# Arch:   pacman -S yt-dlp ffmpeg deno
-# macOS:  brew install yt-dlp ffmpeg deno
-# Windows: winget install yt-dlp.yt-dlp Gyan.FFmpeg DenoLand.Deno
+go run . -open
 ```
 
-### Docker
+For YouTube downloads, install **yt-dlp**, **ffmpeg** and **deno**.
+
+Or use **Docker**, which includes those tools:
 
 ```sh
-docker compose up -d       # or: docker build -t karaoke . && docker run -p 8765:8765 -v karaoke:/data karaoke
+docker compose up -d
 ```
 
-The image brings yt-dlp, deno and ffmpeg. Because the container can't see your LAN address,
-set it for the QR code with `-public-url http://192.168.1.20:8765` (see `compose.yaml`).
-The low latency PipeWire mic runs in a native Linux desktop session; the container uses
-the TV browser's microphone instead.
+For Docker's phone QR code, set `-public-url http://YOUR-LAN-IP:8765`
+in [compose.yaml](compose.yaml).
 
-### Linux launcher
+## Use
 
-`./run.sh` asks whether to build first, then opens the TV page. `./run.sh build` always
-builds; `./run.sh run` uses the existing binary. It binds to `127.0.0.1:8765` by default.
-For phones on your LAN, use `LISTEN=:8765 ./run.sh`. `OPEN=0` keeps the browser closed.
-The launcher can stop an existing Karaoke process on the chosen port, including without
-a prompt when it has no terminal. Run the binary directly to manage its lifetime yourself.
+1. Open **http://localhost:8765/tv** on the computer connected to the TV and click **Start**.
+2. On the same network, scan the TV's QR code with your phone.
+3. Search for a song, enter your name and add it to the queue.
 
-## Options
+On the TV: **F** fullscreen · **/** search · **L** lyrics · **V** microphone settings.
+Browser microphones need localhost or HTTPS.
 
-| Flag | Default | |
-| --- | --- | --- |
-| `-listen` | `:8765` | Address to listen on. `127.0.0.1:8765` keeps it to this computer. |
-| `-open` | off | Open the TV page in the default browser on start. |
-| `-data` | user config dir | Where the queue and settings are saved (`state.json`). |
-| `-cache` | user cache dir | Where downloaded videos go. |
-| `-cache-gb` | `20` | Cache size; the least recently played videos go first. |
-| `-ytdlp` | `yt-dlp` | Path to yt-dlp, or `off`. |
-| `-ytdlp-args` | | Extra yt-dlp arguments, quoted like a shell: `--cookies "C:\My Files\cookies.txt"`. |
-| `-max-height` | `720` | Tallest video to download. |
-| `-region` | | YouTube search region, e.g. `US`, `VN`. |
-| `-library` | | A folder of karaoke files to search beside YouTube; repeat for more. |
-| `-lyrics` | `true` | Look lyrics up on lrclib.net; `-lyrics=false` never asks it. |
-| `-public-url` | | The address the QR code shows. Its host name is also allowed (below). |
-| `-allow-host` | | More host names to answer to, comma-separated, e.g. `karaoke.example.com`. |
-| `-tls-cert`, `-tls-key` | | Serve HTTPS. |
-| `-native-mic` | `true` | Run the mic through PipeWire on this computer when the TV page is here too (Linux). `false`: always in the browser. |
-| `-mic-buffer` | `128` | Samples per audio cycle for the native mic (2.7 ms). Try `256` if the voice crackles. |
-| `-mic-output` | | PipeWire sink for the native mic, by node name (default: the system's default output). |
+For your own files, run `go run . -open -library /path/to/songs`.
+Use the app on a trusted home network or VPN.
 
-Settings on the phone (gear icon): **Download every song** plays everything from the server's
-copy (no YouTube ads; each song waits for its download), and the length of the "up next" card.
+---
 
-## One computer, no phone
-
-Open only the TV page and press **/** (or the search button in the corner) to search on the
-TV itself. Type, press **Enter** to search and **↓** to pick, then **Enter** adds the song
-(**Shift+Enter** sings it next), under the name in the Singer box. **→** moves to the queue,
-where **Delete** removes a song and **Shift+↑/↓** moves it. **Esc** closes the search. Start the
-server with `-listen 127.0.0.1:8765` to keep it on this computer only.
-
-## Singing through the computer
-
-Plug a USB mic into the computer that shows the TV page, click the mic button at the bottom
-left (or press **V**), and switch it on. The voice goes through the chain a karaoke machine
-uses: a high-pass filter for rumble and pops, a little EQ (less boom, more presence), a gentle
-compressor, the karaoke echo, a reverb, and a limiter. **Echo** and **Reverb** are the two
-knobs that matter, with *Dry*, *KTV* and *Hall* as starting points. Phones get a mic card
-under the song for turning it on, setting levels and picking a preset mid-song.
-[FEATURES.MD](FEATURES.MD) walks through setting every knob for your voice.
-
-**Mic boost** (0 to 24 dB) is for a quiet mic: it raises the voice going in, before anything
-else, where **Mic volume** sets how loud it comes out. Sing your loudest and keep the level
-meter out of the far right. The feedback guard turns the mic down only for a lone tone: a
-held note, however loud, has its octave beside it, so a boosted voice doesn't set it off.
-
-**Voice** has four more knobs, all off to start:
-
-- **Warmth** adds body in the low mids (a shelf at 220 Hz, up to +6 dB).
-- **Bright** adds presence and air (a shelf at 5 kHz, up to +8 dB), for a voice that sounds dull.
-- **Double** adds a second voice beside the first, two copies 14 and 23 ms late that drift a
-  little in time, one to each side: a fuller sound, like a singer and their double take.
-
-**Auto-tune** (pitch correction) finds the note you sing and pulls it to the right one. It is
-off to start; *Natural*, *Strong* and *Robot* set it up in one press, and three controls tune
-it from there:
-
-- **Tune** is how far each note is pulled: 0 is off, 100 all the way onto the note.
-- **Speed** is how fast. Slow keeps slides and vibrato and only straightens a held note; 100
-  jumps from note to note at once and irons the vibrato out, the robotic effect.
-- **Notes** is which notes count. *Every semitone* pulls to the nearest one, whatever the song.
-  *The song's key* pulls only to the song's own notes, so a note sung off goes to the nearest
-  note in the key, never to one outside it: the server hears the key in the song's sound
-  (it needs **ffmpeg**; a YouTube song is downloaded for it, so that needs **yt-dlp** too, and
-  this only happens while the mic is on). A key picked by hand works without either. Both
-  follow a key change once the music has it: a video playing embedded keeps its own key until
-  its copy is downloaded, and Tune waits with it.
-
-While Tune is on, your voice comes back 8 ms later. The key is heard over the whole song, so a
-song that changes key part way (Bohemian Rhapsody) is pulled to one of its keys throughout:
-use *Every semitone* for those.
-
-### Low latency: the mic outside the browser
-
-A browser is slow at this: from the mic, through the page, to the speakers takes 60 to 70 ms
-on Linux, late enough to hear as an echo of yourself. So when the TV page is open on the
-server's own computer and the server finds PipeWire (most Linux desktops), the server runs the
-mic itself: `pw-record` from the mic, the same chain in Go, `pw-play` to the speakers, about
-5 ms in all. The panel says which it is using, and **Low latency** switches back to the browser.
-Measured on one desktop with a virtual mic looped back to itself: 5 ms through the server,
-51 to 57 ms through Chromium. The mic and speakers add their own few milliseconds to both.
-
-On a Mac, Windows, or a TV browser on another machine, the browser runs the mic as before. A
-mic left on by a closed TV page turns itself off within 20 s, and only a page on the server's
-own computer can reach this mic (phones change it through the TV page).
-
-- **The browser's mic only works on `localhost` or HTTPS**, a browser rule. Opening the TV page
-  on the server's own computer (`http://localhost:8765/tv`) is fine. For a TV browser on
-  another machine, serve HTTPS (`-tls-cert`/`-tls-key`, or `tailscale serve`).
-- **Delay.** **Measure delay** plays three clicks through the speakers and times their return
-  through the mic. Under about 25 ms feels natural. In the browser on Linux, PipeWire's buffer
-  adds to it; try `pw-metadata -n settings 0 clock.force-quantum 256` (and `0` to undo).
-- **Feedback.** Headphones, or a mic pointed away from the speakers, prevent it. If it starts
-  to howl (a loud tone that holds one pitch for a second), the page turns the mic down.
-- The browser's call processing (echo cancellation, noise suppression, auto gain) is off: it
-  treats a held note as noise and pumps the level.
-- For no delay at all, use a mixer or a karaoke speaker with the mics plugged into it, and the
-  computer's sound into its line-in.
-
-## Lyrics
-
-Press **L** on the TV (or the *On TV* switch in the phone's **Lyrics** tab) for a panel with
-the song's words beside the video. They are plain text with no timing, sized so the whole song
-fits when it can (one column, then two, then a wider panel); a longer song scrolls with
-**Page Up/Down** or the phone's arrows. The phone's Lyrics tab shows the same words.
-
-They come from LRCLIB, a free, open lyrics database. The server takes the karaoke dressing off
-the video's title ("Bohemian Rhapsody - Queen | Karaoke Version | KaraFun" becomes "bohemian
-rhapsody queen"), searches, and picks the record whose name the title contains, preferring the
-song over remixes, a length close to the video's, and accented lyrics for an accented title.
-When nothing fits, it tries the title with one word left out, so an uploader's misspelling
-("Anh Đau Từ Khúc Em Đi" for "Anh Đau Từ Lúc Em Đi") still finds the song. A number after the
-name makes another song, so "Kẻ Say Tình 2" never gets the words of "Kẻ Say Tình"; with no
-record of the song, the panel says so rather than show another one. On 109 real karaoke titles
-(English and Vietnamese) it picked the right song, or rightly none, every time. When it is wrong,
-**Wrong lyrics?** on the phone searches LRCLIB by hand, starting from the cleaned title with
-its accents; a search that finds nothing is loosened the same way. *No lyrics* turns them off
-for that song. With `-lyrics=false` the server never contacts LRCLIB.
-
-## Your own karaoke files
-
-```sh
-karaoke -library ~/Karaoke            # repeat -library for more folders
-```
-
-The server reads the folder and its subfolders for:
-
-- **MP3+G**: an audio file (`.mp3`, `.m4a`, `.ogg`, `.flac`, `.wav`...) beside a `.cdg` of
-  the same name, as karaoke discs are ripped. The TV draws the graphics in step with the
-  music.
-- **Videos**: `.mp4`, `.webm`, `.m4v`, and `.mkv` or `.mov` when what's inside is H.264, VP9
-  or AV1 (what a browser can play).
-- **Audio** on its own: a backing track, shown as a card with its name (the lyrics panel
-  helps here).
-
-Names are read as `Artist - Title`, with a disc code in front (`SC8125-01 - Queen - Bohemian
-Rhapsody`) dropped. Searching matches the start of each word, without accents ("nang am"
-finds "Nắng Ấm Xa Dần"), across artist, title and folder names, and library hits show above
-YouTube's on the phone. The folders are read again every two minutes, so new files show up
-without a restart. Zipped MP3+G (`.zip`) is not read yet: unzip it first. With `ffprobe`
-(part of ffmpeg) installed, a song's length is measured when it is queued. The server streams
-library files to connected TV browsers.
-
-## Key change
-
-The **♭/♯** buttons on the phone's now-playing card (or **[** and **]** on the TV) move the
-song up or down a semitone, as far as six either way. The TV shifts the sound itself with
-[Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) in an AudioWorklet, so the
-tempo stays the same. Library files change key at once. A YouTube song needs its downloaded copy, because YouTube's embedded player
-keeps its sound to itself: a song playing embedded keeps going in the original key while the
-copy downloads (a few seconds), then carries on from the same spot in the new key. The shifter
-needs 0.12 s, and sound through Web Audio leaves later than the browser allows for when it
-syncs the picture, so the TV holds the picture back to match: each frame is drawn on a canvas
-over the video that much later (about 0.15 s), and MP3+G graphics wait the same. Measured with a
-test video that flashes and beeps, picture and sound land within about 15 ms of each other. The
-key belongs to that turn in the queue, so the next singer starts in the original key. For a
-YouTube song, downloads must be on (`yt-dlp` found).
-
-## How playback is chosen
-
-For each song the server decides, and the TV follows:
-
-1. A downloaded copy, if there is one: it starts at once and has no ads. A song in another key
-   always waits for one.
-2. Otherwise YouTube's embedded player, if the video allows it. Before a song is queued the
-   server asks YouTube's oEmbed endpoint, which answers 401 for videos that block embedding.
-3. Otherwise the TV waits while yt-dlp downloads it (720p MP4, usually a few seconds). If the
-   embedded player refuses a video anyway (error 101/150), the TV asks for the download.
-
-## Network and privacy
-
-The server has no accounts: anyone who can reach it can queue and skip, which is the point at
-a party. Keep it on your home network (or a VPN such as Tailscale), not the open internet.
-Other websites' pages can't use it either: writes must be JSON (which a cross-site page can't
-send without permission the server never gives), no page can frame it, and requests that name
-a host the server doesn't know are refused, which stops DNS rebinding. Addresses, `localhost`,
-bare machine names and home or VPN names (`.local`, `.lan`, `.home.arpa`, `.ts.net`) always
-work; add any other name with `-allow-host`. Every request body is validated. Respect
-YouTube's terms and the rights holders when using downloads.
-
-Search and embedding checks contact YouTube; the TV player and thumbnails also load from
-YouTube. Enabled lyric lookups contact LRCLIB. The queue stores singer names and song history
-in the data directory, and downloads stay in the cache directory. Microphone audio is
-processed by the TV browser or the local PipeWire engine. See [SECURITY.md](SECURITY.md).
-
-## Develop
-
-Use Go 1.26+ and Node.js 22+. There are no npm dependencies. With Make installed:
-
-```sh
-make test     # Go tests with the race detector, plus the web UI's node tests
-make check    # tests, gofmt, go vet
-make dist     # binaries for every platform in dist/
-```
-
-Layout: `internal/room` (queue and its saved state), `internal/youtube` (keyless search and the
-embed check), `internal/media` (yt-dlp downloads and the cache), `internal/library` (scanning and searching folders), `internal/lyrics` (LRCLIB and
-matching titles to songs; `LRCLIB_LIVE=1 go test ./internal/lyrics` checks the real titles),
-`internal/voice` (the native mic: the vocal chain, pitch correction and the PipeWire pipeline),
-`web/static/vendor` (Signalsmith Stretch and cdgraphics; see `THIRD_PARTY.md`), `internal/server` (HTTP API,
-live events over SSE, QR codes), `web/` (the phone remote `index.html` and the TV `tv.html`,
-plain ES modules, no build step). Read [CONTRIBUTING.md](CONTRIBUTING.md) for direct test
-commands and packaging, and [docs/architecture.md](docs/architecture.md) for design details.
-
-## License
-
-Copyright (c) 2026 Tuan Tran and contributors.
-
-Karaoke's original source and documentation are licensed under
-[Creative Commons Attribution-NonCommercial 4.0 International](https://creativecommons.org/licenses/by-nc/4.0/)
-([CC-BY-NC-4.0](LICENSE)). You may share and adapt them for noncommercial purposes with
-attribution and an indication of changes, subject to the full license terms. Attribute
-the project to Tuan Tran and contributors and link to
-[this repository](https://github.com/vantuan5644/karaoke).
-
-Third-party components keep their own licenses; see [THIRD_PARTY.md](THIRD_PARTY.md).
-Music, videos and lyrics are covered by their respective rights holders' terms.
+© 2026 Tuan Tran and contributors · [CC BY-NC 4.0](LICENSE) ·
+[Third-party notices](THIRD_PARTY.md) · [Contributing](CONTRIBUTING.md)

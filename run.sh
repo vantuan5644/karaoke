@@ -5,13 +5,16 @@
 #                      has changed since ./karaoke was built)
 #   ./run.sh build     builds, then runs
 #   ./run.sh run       runs ./karaoke as it is
+#   ./run.sh local     answers on this computer only; goes with the others: ./run.sh build local
 #
+# Otherwise the server answers on every address this computer has: localhost, the LAN and
+# Tailscale alike (a firewall may still need to let the port in).
 # Anything else goes to the server:  ./run.sh run -library ~/Karaoke
-# LISTEN is where it listens (default 127.0.0.1:8765); OPEN=0 leaves the TV page closed.
+# LISTEN sets the address outright (default :8765); OPEN=0 leaves the TV page closed.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
-LISTEN=${LISTEN:-127.0.0.1:8765}
+LISTEN=${LISTEN:-:8765}
 OPEN=${OPEN:-1}
 PORT=${LISTEN##*:}
 
@@ -63,9 +66,14 @@ stop_old() {
 }
 
 mode=
-case ${1:-} in
-  build | run) mode=$1; shift ;;
-esac
+while [ $# -gt 0 ]; do
+  case $1 in
+    build | run) mode=$1 ;;
+    local) LISTEN=127.0.0.1:$PORT ;;
+    *) break ;;
+  esac
+  shift
+done
 if [ -z "$mode" ]; then
   suggest=r
   if changed; then
